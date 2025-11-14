@@ -1,0 +1,1203 @@
+'use client'
+
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
+import { useCustomizerStore, type GradientStop } from '@/lib/stores/customizer-store'
+import { Frame, Shirt, Coffee, Palette, Layers } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import QRCode from 'qrcode'
+
+interface ProductMockupProps {
+  className?: string
+}
+
+export interface ProductMockupRef {
+  canvas: HTMLCanvasElement | null
+}
+
+export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
+  function ProductMockup({ className }, ref) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [canvasReady, setCanvasReady] = useState(false)
+  
+  // Expose canvas ref to parent
+  useImperativeHandle(ref, () => ({
+    canvas: canvasRef.current
+  }))
+  
+  const audioUrl = useCustomizerStore((state) => state.audioUrl)
+  const waveformColor = useCustomizerStore((state) => state.waveformColor)
+  const waveformUseGradient = useCustomizerStore((state) => state.waveformUseGradient)
+  const waveformGradientStops = useCustomizerStore((state) => state.waveformGradientStops)
+  const waveformGradientDirection = useCustomizerStore((state) => state.waveformGradientDirection)
+  const backgroundColor = useCustomizerStore((state) => state.backgroundColor)
+  const backgroundUseGradient = useCustomizerStore((state) => state.backgroundUseGradient)
+  const backgroundGradientStops = useCustomizerStore((state) => state.backgroundGradientStops)
+  const backgroundGradientDirection = useCustomizerStore((state) => state.backgroundGradientDirection)
+  const selectedProduct = useCustomizerStore((state) => state.selectedProduct)
+  const selectedSize = useCustomizerStore((state) => state.selectedSize)
+  const selectedRegion = useCustomizerStore((state) => state.selectedRegion)
+  const waveformStyle = useCustomizerStore((state) => state.waveformStyle)
+  const showText = useCustomizerStore((state) => state.showText)
+  const songTitle = useCustomizerStore((state) => state.songTitle)
+  const artistName = useCustomizerStore((state) => state.artistName)
+  const customDate = useCustomizerStore((state) => state.customDate)
+  const customText = useCustomizerStore((state) => state.customText)
+  const textColor = useCustomizerStore((state) => state.textColor)
+  const textPosition = useCustomizerStore((state) => state.textPosition)
+  const fontSize = useCustomizerStore((state) => state.fontSize)
+  const backgroundImage = useCustomizerStore((state) => state.backgroundImage)
+  const backgroundOpacity = useCustomizerStore((state) => state.backgroundOpacity)
+  const showQRCode = useCustomizerStore((state) => state.showQRCode)
+  const qrCodeUrl = useCustomizerStore((state) => state.qrCodeUrl)
+  const qrCodePosition = useCustomizerStore((state) => state.qrCodePosition)
+
+  // Set canvasReady when canvas ref is available
+  // This needs to run after render to check if canvas exists
+  useEffect(() => {
+    if (canvasRef.current && !canvasReady) {
+      setCanvasReady(true)
+    }
+  }) // No dependency array - runs after every render, but only sets state once
+
+  useEffect(() => {
+    console.log('ProductMockup render:', { audioUrl, canvasReady, hasCanvas: !!canvasRef.current })
+    if (!canvasRef.current) return
+
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    
+    // Disable image smoothing for sharper rendering
+    ctx.imageSmoothingEnabled = false
+    
+    // Set canvas size
+    const sizes: Record<string, { width: number; height: number }> = {
+      '12x16': { width: 900, height: 1200 },
+      '18x24': { width: 900, height: 1200 },
+      '24x36': { width: 900, height: 1350 },
+      'S': { width: 800, height: 900 },
+      'M': { width: 800, height: 900 },
+      'L': { width: 800, height: 900 },
+      'XL': { width: 800, height: 900 },
+      'XXL': { width: 800, height: 900 },
+      '11oz': { width: 700, height: 700 },
+      '15oz': { width: 700, height: 700 },
+      '16x20': { width: 900, height: 1125 },
+      '20x24': { width: 900, height: 1080 },
+    }
+    const size = sizes[selectedSize] || { width: 600, height: 800 }
+    canvas.width = size.width
+    canvas.height = size.height
+    
+    // Clear with background color or gradient
+    if (backgroundUseGradient) {
+      let bgGradient
+      if (backgroundGradientDirection === 'radial') {
+        bgGradient = ctx.createRadialGradient(
+          canvas.width / 2, canvas.height / 2, 0,
+          canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2
+        )
+      } else if (backgroundGradientDirection === 'horizontal') {
+        bgGradient = ctx.createLinearGradient(0, 0, canvas.width, 0)
+      } else if (backgroundGradientDirection === 'vertical') {
+        bgGradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
+      } else { // diagonal
+        bgGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height)
+      }
+      // Add all gradient stops
+      const sortedStops = [...backgroundGradientStops].sort((a, b) => a.position - b.position)
+      sortedStops.forEach(stop => {
+        bgGradient.addColorStop(stop.position, stop.color)
+      })
+      ctx.fillStyle = bgGradient
+    } else {
+      ctx.fillStyle = backgroundColor
+    }
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    
+    // Add gradient
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.08)')
+    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0)')
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.08)')
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    
+    if (!audioUrl || !canvasReady) {
+      console.log('Skipping waveform generation:', { audioUrl: !!audioUrl, canvasReady })
+      return
+    }
+
+    console.log('Starting waveform generation...')
+    setIsGenerating(true)
+
+    fetch(audioUrl)
+      .then(response => {
+        console.log('Fetch response:', response.status)
+        return response.arrayBuffer()
+      })
+      .then(arrayBuffer => {
+        console.log('Got arrayBuffer, size:', arrayBuffer.byteLength)
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+        return audioContext.decodeAudioData(arrayBuffer)
+      })
+      .then(audioBuffer => {
+        console.log('Decoded audio, duration:', audioBuffer.duration)
+        
+        // Clear with background color or gradient
+        if (backgroundUseGradient) {
+          let bgGradient
+          if (backgroundGradientDirection === 'radial') {
+            bgGradient = ctx.createRadialGradient(
+              canvas.width / 2, canvas.height / 2, 0,
+              canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2
+            )
+          } else if (backgroundGradientDirection === 'horizontal') {
+            bgGradient = ctx.createLinearGradient(0, 0, canvas.width, 0)
+          } else if (backgroundGradientDirection === 'vertical') {
+            bgGradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
+          } else { // diagonal
+            bgGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height)
+          }
+          // Add all gradient stops
+          const sortedStops = [...backgroundGradientStops].sort((a, b) => a.position - b.position)
+          sortedStops.forEach(stop => {
+            bgGradient.addColorStop(stop.position, stop.color)
+          })
+          ctx.fillStyle = bgGradient
+        } else {
+          ctx.fillStyle = backgroundColor
+        }
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        
+        // Draw background image if provided (wait for it to load)
+        const backgroundPromise = backgroundImage
+          ? new Promise<void>((resolve) => {
+              const img = new Image()
+              img.onload = () => {
+                ctx.save()
+                ctx.globalAlpha = backgroundOpacity
+                
+                // Calculate dimensions to cover canvas while maintaining aspect ratio
+                const imgAspect = img.width / img.height
+                const canvasAspect = canvas.width / canvas.height
+                let drawWidth, drawHeight, offsetX, offsetY
+                
+                if (imgAspect > canvasAspect) {
+                  // Image is wider - fit to height
+                  drawHeight = canvas.height
+                  drawWidth = drawHeight * imgAspect
+                  offsetX = (canvas.width - drawWidth) / 2
+                  offsetY = 0
+                } else {
+                  // Image is taller - fit to width
+                  drawWidth = canvas.width
+                  drawHeight = drawWidth / imgAspect
+                  offsetX = 0
+                  offsetY = (canvas.height - drawHeight) / 2
+                }
+                
+                ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight)
+                ctx.restore()
+                resolve()
+              }
+              img.onerror = () => resolve() // Continue even if image fails to load
+              img.src = backgroundImage
+            })
+          : Promise.resolve()
+        
+        return backgroundPromise.then(() => {
+          // Add gradient overlay
+          const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
+          gradient.addColorStop(0, 'rgba(255, 255, 255, 0.08)')
+          gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0)')
+          gradient.addColorStop(1, 'rgba(0, 0, 0, 0.08)')
+          ctx.fillStyle = gradient
+          ctx.fillRect(0, 0, canvas.width, canvas.height)
+          
+          return audioBuffer
+        })
+      })
+      .then(audioBuffer => {
+        const rawData = audioBuffer.getChannelData(0)
+        const sampleRate = audioBuffer.sampleRate
+        
+        // Calculate the start and end samples based on selected region
+        let startSample = 0
+        let endSample = rawData.length
+        
+        if (selectedRegion) {
+          startSample = Math.floor(selectedRegion.start * sampleRate)
+          endSample = Math.floor(selectedRegion.end * sampleRate)
+          console.log('Using selected region:', { start: selectedRegion.start, end: selectedRegion.end, startSample, endSample })
+        }
+        
+        // Extract only the selected region
+        const regionData = rawData.slice(startSample, endSample)
+        
+        // Calculate waveform dimensions based on canvas size
+        const padding = canvas.width * 0.1 // 10% padding on each side
+        const waveformWidth = canvas.width - (padding * 2)
+        const waveformHeight = canvas.height * 0.7 // 70% of canvas height
+        const waveformX = padding
+        const waveformY = (canvas.height - waveformHeight) / 2
+        
+        const barWidth = 6
+        const barGap = 1
+        const barTotalWidth = barWidth + barGap
+        const samples = Math.floor(waveformWidth / barTotalWidth)
+        
+        // Ensure we have enough data to create meaningful samples
+        const blockSize = Math.max(1, Math.floor(regionData.length / samples))
+        const filteredData = []
+        
+        for (let i = 0; i < samples; i++) {
+          const blockStart = blockSize * i
+          const blockEnd = Math.min(blockStart + blockSize, regionData.length)
+          let sum = 0
+          let count = 0
+          
+          for (let j = blockStart; j < blockEnd; j++) {
+            sum += Math.abs(regionData[j])
+            count++
+          }
+          
+          filteredData.push(count > 0 ? sum / count : 0)
+        }
+        
+        const max = Math.max(...filteredData)
+        const normalizedData = filteredData.map(n => n / max)
+        
+        // Create waveform color or gradient
+        let waveformFillStyle: string | CanvasGradient
+        if (waveformUseGradient) {
+          let waveGradient
+          if (waveformGradientDirection === 'radial') {
+            waveGradient = ctx.createRadialGradient(
+              canvas.width / 2, canvas.height / 2, 0,
+              canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2
+            )
+          } else if (waveformGradientDirection === 'horizontal') {
+            waveGradient = ctx.createLinearGradient(waveformX, 0, waveformX + waveformWidth, 0)
+          } else if (waveformGradientDirection === 'vertical') {
+            waveGradient = ctx.createLinearGradient(0, waveformY, 0, waveformY + waveformHeight)
+          } else { // diagonal
+            waveGradient = ctx.createLinearGradient(waveformX, waveformY, waveformX + waveformWidth, waveformY + waveformHeight)
+          }
+          // Add all gradient stops
+          const sortedStops = [...waveformGradientStops].sort((a, b) => a.position - b.position)
+          sortedStops.forEach(stop => {
+            waveGradient.addColorStop(stop.position, stop.color)
+          })
+          waveformFillStyle = waveGradient
+        } else {
+          waveformFillStyle = waveformColor
+        }
+        
+        ctx.fillStyle = waveformFillStyle
+        
+        // Render based on selected style
+        switch (waveformStyle) {
+          case 'bars':
+            // Classic vertical bars
+            for (let i = 0; i < normalizedData.length; i++) {
+              const barHeight = normalizedData[i] * waveformHeight
+              const x = Math.round(waveformX + i * (barWidth + barGap))
+              const y = Math.round(waveformY + (waveformHeight - barHeight) / 2)
+              
+              ctx.beginPath()
+              ctx.roundRect(x, y, barWidth, Math.round(barHeight), 2)
+              ctx.fill()
+            }
+            break
+            
+          case 'mirror':
+            // Mirrored waveform (top and bottom)
+            for (let i = 0; i < normalizedData.length; i++) {
+              const barHeight = (normalizedData[i] * waveformHeight) / 2
+              const x = Math.round(waveformX + i * (barWidth + barGap))
+              const centerY = Math.round(waveformY + waveformHeight / 2)
+              
+              // Top half
+              ctx.beginPath()
+              ctx.roundRect(x, Math.round(centerY - barHeight), barWidth, Math.round(barHeight), 2)
+              ctx.fill()
+              
+              // Bottom half
+              ctx.beginPath()
+              ctx.roundRect(x, centerY, barWidth, Math.round(barHeight), 2)
+              ctx.fill()
+            }
+            break
+            
+          case 'dots':
+            // Dotted pattern
+            for (let i = 0; i < normalizedData.length; i++) {
+              const barHeight = normalizedData[i] * waveformHeight
+              const x = Math.round(waveformX + i * (barWidth + barGap) + barWidth / 2)
+              const centerY = Math.round(waveformY + waveformHeight / 2)
+              const numDots = Math.max(3, Math.floor((barHeight / waveformHeight) * 15))
+              
+              for (let j = 0; j < numDots; j++) {
+                const dotY = Math.round(centerY - (barHeight / 2) + (j * barHeight) / (numDots - 1))
+                ctx.beginPath()
+                ctx.arc(x, dotY, 2.5, 0, Math.PI * 2)
+                ctx.fill()
+              }
+            }
+            break
+            
+          case 'circular':
+            // Circular visualization
+            const centerX = canvas.width / 2
+            const centerY = canvas.height / 2
+            const radius = Math.min(waveformWidth, waveformHeight) * 0.35
+            
+            ctx.lineWidth = 3
+            
+            for (let i = 0; i < normalizedData.length; i++) {
+              const angle = (i / normalizedData.length) * Math.PI * 2 - Math.PI / 2
+              const amplitude = normalizedData[i] * radius * 0.4
+              const innerRadius = radius - amplitude / 2
+              const outerRadius = radius + amplitude / 2
+              
+              const x1 = centerX + Math.cos(angle) * innerRadius
+              const y1 = centerY + Math.sin(angle) * innerRadius
+              const x2 = centerX + Math.cos(angle) * outerRadius
+              const y2 = centerY + Math.sin(angle) * outerRadius
+              
+              ctx.beginPath()
+              ctx.moveTo(x1, y1)
+              ctx.lineTo(x2, y2)
+              ctx.strokeStyle = waveformFillStyle
+              ctx.stroke()
+            }
+            break
+            
+          case 'radial':
+            // Radial burst effect
+            const radialCenterX = canvas.width / 2
+            const radialCenterY = canvas.height / 2
+            const maxRadius = Math.min(waveformWidth, waveformHeight) * 0.4
+            
+            for (let i = 0; i < normalizedData.length; i++) {
+              const angle = (i / normalizedData.length) * Math.PI * 2
+              const length = normalizedData[i] * maxRadius
+              
+              const x1 = radialCenterX
+              const y1 = radialCenterY
+              const x2 = radialCenterX + Math.cos(angle) * length
+              const y2 = radialCenterY + Math.sin(angle) * length
+              
+              ctx.strokeStyle = waveformFillStyle
+              ctx.lineWidth = 3
+              ctx.lineCap = 'round'
+              
+              ctx.beginPath()
+              ctx.moveTo(x1, y1)
+              ctx.lineTo(x2, y2)
+              ctx.stroke()
+            }
+            break
+            
+          case 'galaxy':
+            // Cosmic galaxy effect
+            const galaxyCenterX = canvas.width / 2
+            const galaxyCenterY = canvas.height / 2
+            const galaxyRadius = Math.min(waveformWidth, waveformHeight) * 0.35
+            
+            if (normalizedData.length === 0) break
+            
+            for (let i = 0; i < normalizedData.length; i++) {
+              const angle = (i / normalizedData.length) * Math.PI * 2
+              const distance = galaxyRadius * (0.5 + normalizedData[i] * 0.5)
+              
+              // Create swirling effect
+              const swirl = (i / normalizedData.length) * Math.PI * 4
+              const x = galaxyCenterX + Math.cos(angle + swirl * 0.3) * distance
+              const y = galaxyCenterY + Math.sin(angle + swirl * 0.3) * distance
+              
+              const size = 2 + normalizedData[i] * 4
+              const opacity = 0.3 + normalizedData[i] * 0.7
+              
+              ctx.fillStyle = waveformColor + Math.floor(opacity * 255).toString(16).padStart(2, '0')
+              ctx.beginPath()
+              ctx.arc(x, y, size, 0, Math.PI * 2)
+              ctx.fill()
+              
+              // Add glow effect
+              ctx.shadowBlur = 10
+              ctx.shadowColor = waveformColor
+              ctx.fill()
+              ctx.shadowBlur = 0
+            }
+            break
+            
+          case 'frequency':
+            // Frequency spectrum bars
+            if (normalizedData.length === 0) break
+            
+            const freqBarWidth = waveformWidth / normalizedData.length
+            const freqMaxHeight = waveformHeight * 0.8
+            
+            for (let i = 0; i < normalizedData.length; i++) {
+              const barHeight = normalizedData[i] * freqMaxHeight
+              const x = waveformX + i * freqBarWidth
+              const y = waveformY + waveformHeight - barHeight
+              
+              // Skip if values are not finite
+              if (!isFinite(x) || !isFinite(y) || !isFinite(barHeight)) continue
+              
+              // Gradient for each bar
+              const gradient = ctx.createLinearGradient(x, y + barHeight, x, y)
+              gradient.addColorStop(0, waveformColor + '40')
+              gradient.addColorStop(1, waveformColor)
+              
+              ctx.fillStyle = gradient
+              ctx.fillRect(x, y, freqBarWidth * 0.8, barHeight)
+            }
+            break
+            
+          case 'particle':
+            // Particle cloud
+            if (normalizedData.length === 0) break
+            
+            const particleCenterX = canvas.width / 2
+            const particleCenterY = canvas.height / 2
+            const particleSpread = Math.min(waveformWidth, waveformHeight) * 0.4
+            
+            for (let i = 0; i < normalizedData.length; i++) {
+              const angle = (i / normalizedData.length) * Math.PI * 2
+              const distance = (Math.random() * 0.5 + 0.5) * particleSpread * normalizedData[i]
+              
+              const x = particleCenterX + Math.cos(angle) * distance
+              const y = particleCenterY + Math.sin(angle) * distance
+              
+              const size = 1 + normalizedData[i] * 5
+              const opacity = 0.4 + normalizedData[i] * 0.6
+              
+              ctx.fillStyle = waveformColor + Math.floor(opacity * 255).toString(16).padStart(2, '0')
+              ctx.beginPath()
+              ctx.arc(x, y, size, 0, Math.PI * 2)
+              ctx.fill()
+            }
+            break
+            
+          case 'ripple':
+            // Water ripple effect
+            const rippleCenterX = canvas.width / 2
+            const rippleCenterY = canvas.height / 2
+            const maxRippleRadius = Math.min(waveformWidth, waveformHeight) * 0.45
+            const numRipples = 8
+            
+            ctx.strokeStyle = waveformFillStyle
+            ctx.lineWidth = 2
+            
+            for (let r = 0; r < numRipples; r++) {
+              const rippleProgress = r / numRipples
+              const baseRadius = rippleProgress * maxRippleRadius
+              
+              ctx.beginPath()
+              for (let i = 0; i <= normalizedData.length; i++) {
+                const angle = (i / normalizedData.length) * Math.PI * 2
+                const dataIndex = i % normalizedData.length
+                const amplitude = normalizedData[dataIndex] * 30 * (1 - rippleProgress)
+                const radius = baseRadius + amplitude
+                
+                const x = rippleCenterX + Math.cos(angle) * radius
+                const y = rippleCenterY + Math.sin(angle) * radius
+                
+                if (i === 0) {
+                  ctx.moveTo(x, y)
+                } else {
+                  ctx.lineTo(x, y)
+                }
+              }
+              ctx.closePath()
+              ctx.globalAlpha = 1 - rippleProgress * 0.7
+              ctx.stroke()
+            }
+            ctx.globalAlpha = 1
+            break
+            
+          case 'soundwave':
+            // Concentric rings
+            const ringCenterX = canvas.width / 2
+            const ringCenterY = canvas.height / 2
+            const maxRingRadius = Math.min(waveformWidth, waveformHeight) * 0.4
+            const segmentsPerRing = normalizedData.length
+            
+            for (let ring = 0; ring < 5; ring++) {
+              const ringRadius = (ring + 1) * (maxRingRadius / 5)
+              
+              ctx.beginPath()
+              for (let i = 0; i <= segmentsPerRing; i++) {
+                const angle = (i / segmentsPerRing) * Math.PI * 2
+                const dataIndex = i % normalizedData.length
+                const thickness = normalizedData[dataIndex] * 20
+                const radius = ringRadius + thickness
+                
+                const x = ringCenterX + Math.cos(angle) * radius
+                const y = ringCenterY + Math.sin(angle) * radius
+                
+                if (i === 0) {
+                  ctx.moveTo(x, y)
+                } else {
+                  ctx.lineTo(x, y)
+                }
+              }
+              ctx.closePath()
+              ctx.fillStyle = waveformColor + Math.floor((1 - ring * 0.15) * 255).toString(16).padStart(2, '0')
+              ctx.fill()
+            }
+            break
+            
+          case 'wave3d':
+            // 3D perspective wave
+            for (let i = 0; i < normalizedData.length; i++) {
+              const barHeight = normalizedData[i] * waveformHeight
+              const x = waveformX + i * (barWidth + barGap)
+              const depth = i / normalizedData.length
+              const scale = 0.5 + (depth * 0.5)
+              const scaledHeight = barHeight * scale
+              const y = waveformY + (waveformHeight - scaledHeight) / 2
+              
+              // Shadow for depth
+              ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
+              ctx.fillRect(x + 2, y + 2, barWidth * scale, scaledHeight)
+              
+              // Main bar
+              ctx.fillStyle = waveformFillStyle
+              const alpha = Math.floor(255 * (0.5 + depth * 0.5)).toString(16).padStart(2, '0')
+              ctx.fillStyle = waveformColor + alpha
+              ctx.fillRect(x, y, barWidth * scale, scaledHeight)
+            }
+            break
+            
+          case 'neon':
+            // Neon glow effect
+            ctx.shadowBlur = 20
+            ctx.shadowColor = waveformColor
+            
+            for (let i = 0; i < normalizedData.length; i++) {
+              const barHeight = normalizedData[i] * waveformHeight
+              const x = waveformX + i * (barWidth + barGap)
+              const y = waveformY + (waveformHeight - barHeight) / 2
+              
+              // Outer glow
+              ctx.shadowBlur = 30
+              ctx.fillStyle = waveformFillStyle
+              ctx.fillRect(x, y, barWidth, barHeight)
+              
+              // Inner bright core
+              ctx.shadowBlur = 10
+              ctx.fillStyle = '#FFFFFF'
+              ctx.fillRect(x + barWidth * 0.25, y, barWidth * 0.5, barHeight)
+            }
+            ctx.shadowBlur = 0
+            break
+            
+          case 'gradient-bars':
+            // Gradient colored bars
+            for (let i = 0; i < normalizedData.length; i++) {
+              const barHeight = normalizedData[i] * waveformHeight
+              const x = waveformX + i * (barWidth + barGap)
+              const y = waveformY + (waveformHeight - barHeight) / 2
+              
+              const gradient = ctx.createLinearGradient(x, y, x, y + barHeight)
+              const hue = (i / normalizedData.length) * 360
+              gradient.addColorStop(0, `hsl(${hue}, 100%, 60%)`)
+              gradient.addColorStop(0.5, `hsl(${hue}, 100%, 50%)`)
+              gradient.addColorStop(1, `hsl(${hue}, 100%, 40%)`)
+              
+              ctx.fillStyle = gradient
+              ctx.fillRect(x, y, barWidth, barHeight)
+            }
+            break
+            
+          case 'vinyl':
+            // Vinyl record grooves
+            const vinylCenterX = canvas.width / 2
+            const vinylCenterY = canvas.height / 2
+            const vinylMaxRadius = Math.min(waveformWidth, waveformHeight) * 0.45
+            
+            for (let i = 0; i < normalizedData.length; i++) {
+              const angle = (i / normalizedData.length) * Math.PI * 2
+              const grooveDepth = normalizedData[i] * 30
+              const baseRadius = vinylMaxRadius - (i / normalizedData.length) * vinylMaxRadius * 0.5
+              
+              for (let r = -grooveDepth; r <= grooveDepth; r += 2) {
+                const radius = baseRadius + r
+                const x1 = vinylCenterX + Math.cos(angle) * radius
+                const y1 = vinylCenterY + Math.sin(angle) * radius
+                const x2 = vinylCenterX + Math.cos(angle + 0.1) * radius
+                const y2 = vinylCenterY + Math.sin(angle + 0.1) * radius
+                
+                ctx.strokeStyle = waveformFillStyle
+                ctx.lineWidth = 1
+                ctx.beginPath()
+                ctx.moveTo(x1, y1)
+                ctx.lineTo(x2, y2)
+                ctx.stroke()
+              }
+            }
+            break
+            
+          case 'equalizer':
+            // Stacked equalizer bars
+            const eqRows = 4
+            const rowHeight = waveformHeight / eqRows
+            
+            for (let row = 0; row < eqRows; row++) {
+              for (let i = 0; i < normalizedData.length; i++) {
+                const barHeight = (normalizedData[i] * rowHeight * 0.8)
+                const x = waveformX + i * (barWidth + barGap)
+                const y = waveformY + row * rowHeight + (rowHeight - barHeight) / 2
+                
+                const alpha = Math.floor(255 * (1 - row * 0.2)).toString(16).padStart(2, '0')
+                ctx.fillStyle = waveformColor + alpha
+                ctx.fillRect(x, y, barWidth, barHeight)
+              }
+            }
+            break
+            
+          case 'pulse':
+            // Pulsing heart/pulse shape
+            for (let i = 0; i < normalizedData.length; i++) {
+              const x = waveformX + i * (barWidth + barGap)
+              const amplitude = normalizedData[i] * waveformHeight * 0.4
+              const centerY = waveformY + waveformHeight / 2
+              
+              ctx.beginPath()
+              ctx.moveTo(x, centerY)
+              ctx.lineTo(x + barWidth * 0.5, centerY - amplitude)
+              ctx.lineTo(x + barWidth, centerY)
+              ctx.lineTo(x + barWidth * 0.5, centerY + amplitude)
+              ctx.closePath()
+              
+              ctx.fillStyle = waveformFillStyle
+              ctx.fill()
+            }
+            break
+            
+          case 'geometric':
+            // Geometric shapes (triangles and hexagons)
+            for (let i = 0; i < normalizedData.length; i++) {
+              const x = waveformX + i * (barWidth + barGap)
+              const size = normalizedData[i] * waveformHeight * 0.3
+              const centerY = waveformY + waveformHeight / 2
+              
+              if (i % 2 === 0) {
+                // Triangle
+                ctx.beginPath()
+                ctx.moveTo(x + barWidth / 2, centerY - size / 2)
+                ctx.lineTo(x, centerY + size / 2)
+                ctx.lineTo(x + barWidth, centerY + size / 2)
+                ctx.closePath()
+              } else {
+                // Hexagon
+                const sides = 6
+                ctx.beginPath()
+                for (let s = 0; s < sides; s++) {
+                  const angle = (s / sides) * Math.PI * 2
+                  const hx = x + barWidth / 2 + Math.cos(angle) * size / 2
+                  const hy = centerY + Math.sin(angle) * size / 2
+                  if (s === 0) ctx.moveTo(hx, hy)
+                  else ctx.lineTo(hx, hy)
+                }
+                ctx.closePath()
+              }
+              
+              ctx.fillStyle = waveformFillStyle
+              ctx.fill()
+            }
+            break
+            
+          case 'dna':
+            // DNA double helix
+            const dnaAmplitude = waveformHeight * 0.3
+            const dnaCenterY = waveformY + waveformHeight / 2
+            
+            for (let i = 0; i < normalizedData.length; i++) {
+              const x = waveformX + i * (barWidth + barGap)
+              const progress = i / normalizedData.length
+              const wave = Math.sin(progress * Math.PI * 4) * dnaAmplitude * normalizedData[i]
+              
+              // Top strand
+              ctx.beginPath()
+              ctx.arc(x + barWidth / 2, dnaCenterY + wave, barWidth / 2, 0, Math.PI * 2)
+              ctx.fillStyle = waveformFillStyle
+              ctx.fill()
+              
+              // Bottom strand
+              ctx.beginPath()
+              ctx.arc(x + barWidth / 2, dnaCenterY - wave, barWidth / 2, 0, Math.PI * 2)
+              ctx.fillStyle = waveformColor + '99'
+              ctx.fill()
+              
+              // Connecting bars at peaks
+              if (Math.abs(wave) > dnaAmplitude * 0.7) {
+                ctx.strokeStyle = waveformColor + '66'
+                ctx.lineWidth = 2
+                ctx.beginPath()
+                ctx.moveTo(x + barWidth / 2, dnaCenterY + wave)
+                ctx.lineTo(x + barWidth / 2, dnaCenterY - wave)
+                ctx.stroke()
+              }
+            }
+            break
+            
+          case 'moire':
+            // Moire interference patterns
+            const moireLines = 50
+            for (let line = 0; line < moireLines; line++) {
+              ctx.beginPath()
+              const offset = (line / moireLines) * waveformHeight
+              for (let i = 0; i < normalizedData.length; i++) {
+                const x = waveformX + i * (barWidth + barGap)
+                const wave = Math.sin(i * 0.1 + line * 0.2) * normalizedData[i] * 30
+                const y = waveformY + offset + wave
+                
+                if (i === 0) ctx.moveTo(x, y)
+                else ctx.lineTo(x, y)
+              }
+              const alpha = Math.floor(255 * (1 - line / moireLines)).toString(16).padStart(2, '0')
+              ctx.strokeStyle = waveformColor + alpha
+              ctx.lineWidth = 1
+              ctx.stroke()
+            }
+            break
+            
+          case 'fluid':
+            // Organic fluid blob shapes
+            const blobCount = Math.min(15, normalizedData.length / 4)
+            for (let i = 0; i < blobCount; i++) {
+              const dataIndex = Math.floor((i / blobCount) * normalizedData.length)
+              const x = waveformX + (i / blobCount) * waveformWidth
+              const y = waveformY + waveformHeight / 2
+              const radius = normalizedData[dataIndex] * 40
+              
+              ctx.beginPath()
+              for (let angle = 0; angle < Math.PI * 2; angle += 0.5) {
+                const noise = Math.sin(angle * 3 + i) * 5
+                const r = radius + noise
+                const px = x + Math.cos(angle) * r
+                const py = y + Math.sin(angle) * r
+                if (angle === 0) ctx.moveTo(px, py)
+                else ctx.lineTo(px, py)
+              }
+              ctx.closePath()
+              ctx.fillStyle = waveformColor + '99'
+              ctx.fill()
+            }
+            break
+            
+          case 'kaleidoscope':
+            // Mirrored radial symmetry
+            const kCenterX = canvas.width / 2
+            const kCenterY = canvas.height / 2
+            const segments = 8
+            
+            for (let seg = 0; seg < segments; seg++) {
+              ctx.save()
+              ctx.translate(kCenterX, kCenterY)
+              ctx.rotate((seg / segments) * Math.PI * 2)
+              
+              ctx.beginPath()
+              for (let i = 0; i < normalizedData.length; i++) {
+                const distance = (i / normalizedData.length) * waveformHeight * 0.4
+                const amplitude = normalizedData[i] * 30
+                const x = distance
+                const y = amplitude
+                
+                if (i === 0) ctx.moveTo(x, y)
+                else ctx.lineTo(x, y)
+              }
+              
+              ctx.strokeStyle = waveformFillStyle
+              ctx.lineWidth = 2
+              ctx.stroke()
+              ctx.restore()
+            }
+            break
+            
+          case 'glitch':
+            // Digital glitch effect
+            for (let i = 0; i < normalizedData.length; i++) {
+              const x = waveformX + i * (barWidth + barGap)
+              const barHeight = normalizedData[i] * waveformHeight
+              const y = waveformY + (waveformHeight - barHeight) / 2
+              
+              // Random horizontal displacement
+              const glitchOffset = normalizedData[i] > 0.7 ? Math.random() * 20 - 10 : 0
+              
+              // RGB channel separation
+              ctx.fillStyle = '#FF0000'
+              ctx.fillRect(x + glitchOffset - 2, y, barWidth, barHeight)
+              ctx.fillStyle = '#00FF00'
+              ctx.fillRect(x + glitchOffset, y, barWidth, barHeight)
+              ctx.fillStyle = waveformFillStyle
+              ctx.fillRect(x + glitchOffset + 2, y, barWidth, barHeight)
+            }
+            break
+            
+          case 'perlin':
+            // Smooth organic noise flow
+            ctx.beginPath()
+            for (let i = 0; i < normalizedData.length; i++) {
+              const x = waveformX + i * (barWidth + barGap)
+              const noise1 = Math.sin(i * 0.05) * Math.cos(i * 0.03)
+              const noise2 = Math.cos(i * 0.07) * Math.sin(i * 0.04)
+              const organicFlow = (noise1 + noise2) * normalizedData[i] * waveformHeight * 0.3
+              const y = waveformY + waveformHeight / 2 + organicFlow
+              
+              if (i === 0) ctx.moveTo(x, y)
+              else {
+                const prevX = waveformX + (i - 1) * (barWidth + barGap)
+                const prevNoise1 = Math.sin((i - 1) * 0.05) * Math.cos((i - 1) * 0.03)
+                const prevNoise2 = Math.cos((i - 1) * 0.07) * Math.sin((i - 1) * 0.04)
+                const prevFlow = (prevNoise1 + prevNoise2) * normalizedData[i - 1] * waveformHeight * 0.3
+                const prevY = waveformY + waveformHeight / 2 + prevFlow
+                const cpX = (prevX + x) / 2
+                const cpY = (prevY + y) / 2
+                ctx.quadraticCurveTo(prevX, prevY, cpX, cpY)
+              }
+            }
+            ctx.strokeStyle = waveformFillStyle
+            ctx.lineWidth = 3
+            ctx.stroke()
+            break
+            
+          case 'crystals':
+            // Faceted crystalline structures
+            for (let i = 0; i < normalizedData.length; i++) {
+              const x = waveformX + i * (barWidth + barGap)
+              const centerY = waveformY + waveformHeight / 2
+              const size = normalizedData[i] * 30
+              
+              // Draw diamond/crystal shape
+              ctx.beginPath()
+              ctx.moveTo(x + barWidth / 2, centerY - size)
+              ctx.lineTo(x + barWidth, centerY)
+              ctx.lineTo(x + barWidth / 2, centerY + size)
+              ctx.lineTo(x, centerY)
+              ctx.closePath()
+              
+              const gradient = ctx.createLinearGradient(x, centerY - size, x, centerY + size)
+              gradient.addColorStop(0, waveformColor + 'FF')
+              gradient.addColorStop(0.5, waveformColor + '99')
+              gradient.addColorStop(1, waveformColor + '33')
+              ctx.fillStyle = gradient
+              ctx.fill()
+              ctx.strokeStyle = waveformFillStyle
+              ctx.lineWidth = 1
+              ctx.stroke()
+            }
+            break
+            
+          case 'tunnel':
+            // Infinite depth tunnel perspective
+            const tunnelLayers = 20
+            const tunnelCenterX = canvas.width / 2
+            const tunnelCenterY = canvas.height / 2
+            
+            for (let layer = tunnelLayers; layer > 0; layer--) {
+              const scale = layer / tunnelLayers
+              const layerRadius = waveformHeight * 0.4 * scale
+              
+              ctx.beginPath()
+              for (let i = 0; i <= normalizedData.length; i++) {
+                const angle = (i / normalizedData.length) * Math.PI * 2
+                const dataIndex = i % normalizedData.length
+                const depth = normalizedData[dataIndex] * 10 * scale
+                const radius = layerRadius + depth
+                
+                const x = tunnelCenterX + Math.cos(angle) * radius
+                const y = tunnelCenterY + Math.sin(angle) * radius
+                
+                if (i === 0) ctx.moveTo(x, y)
+                else ctx.lineTo(x, y)
+              }
+              ctx.closePath()
+              const alpha = Math.floor(255 * scale).toString(16).padStart(2, '0')
+              ctx.strokeStyle = waveformColor + alpha
+              ctx.lineWidth = 2
+              ctx.stroke()
+            }
+            break
+            
+          case 'bloom':
+            // Light bloom glow effect
+            for (let i = 0; i < normalizedData.length; i++) {
+              const x = waveformX + i * (barWidth + barGap)
+              const barHeight = normalizedData[i] * waveformHeight
+              const y = waveformY + (waveformHeight - barHeight) / 2
+              
+              // Multiple glow layers
+              for (let glow = 3; glow > 0; glow--) {
+                ctx.fillStyle = waveformColor + Math.floor(50 / glow).toString(16).padStart(2, '0')
+                ctx.fillRect(x - glow * 2, y - glow * 2, barWidth + glow * 4, barHeight + glow * 4)
+              }
+              
+              // Bright core
+              ctx.fillStyle = '#FFFFFF'
+              ctx.fillRect(x + barWidth * 0.3, y, barWidth * 0.4, barHeight)
+            }
+            break
+            
+          case 'aurora':
+            // Northern lights effect
+            const auroraWaves = 5
+            for (let wave = 0; wave < auroraWaves; wave++) {
+              const gradient = ctx.createLinearGradient(0, waveformY, 0, waveformY + waveformHeight)
+              const hue1 = (wave * 60) % 360
+              const hue2 = ((wave + 1) * 60) % 360
+              gradient.addColorStop(0, `hsla(${hue1}, 100%, 60%, 0.3)`)
+              gradient.addColorStop(0.5, `hsla(${hue2}, 100%, 50%, 0.5)`)
+              gradient.addColorStop(1, `hsla(${hue1}, 100%, 40%, 0.2)`)
+              
+              ctx.beginPath()
+              for (let i = 0; i < normalizedData.length; i++) {
+                const x = waveformX + i * (barWidth + barGap)
+                const waveOffset = Math.sin(i * 0.05 + wave * 2) * 50
+                const amplitude = normalizedData[i] * waveformHeight * 0.3
+                const y = waveformY + waveformHeight / 2 + waveOffset + amplitude * Math.cos(wave)
+                
+                if (i === 0) ctx.moveTo(x, y)
+                else ctx.lineTo(x, y)
+              }
+              
+              ctx.strokeStyle = gradient
+              ctx.lineWidth = 8
+              ctx.stroke()
+            }
+            break
+            
+          case 'fire':
+            // Flame particle effect
+            for (let i = 0; i < normalizedData.length; i++) {
+              const x = waveformX + i * (barWidth + barGap)
+              const intensity = normalizedData[i]
+              const flameHeight = intensity * waveformHeight * 0.8
+              const particles = Math.floor(intensity * 10)
+              
+              for (let p = 0; p < particles; p++) {
+                const px = x + (Math.random() - 0.5) * barWidth * 2
+                const py = waveformY + waveformHeight - (p / particles) * flameHeight
+                const size = (1 - p / particles) * 6
+                
+                const heat = p / particles
+                const r = 255
+                const g = Math.floor(255 * (1 - heat * 0.5))
+                const b = 0
+                const a = Math.floor(255 * (1 - heat)).toString(16).padStart(2, '0')
+                
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})` + a
+                ctx.beginPath()
+                ctx.arc(px, py, size, 0, Math.PI * 2)
+                ctx.fill()
+              }
+            }
+            break
+            
+          default:
+            // Fallback to bars
+            for (let i = 0; i < normalizedData.length; i++) {
+              const barHeight = normalizedData[i] * waveformHeight
+              const x = waveformX + i * (barWidth + barGap)
+              const y = waveformY + (waveformHeight - barHeight) / 2
+              
+              ctx.beginPath()
+              ctx.roundRect(x, y, barWidth, barHeight, 2)
+              ctx.fill()
+            }
+        }
+        
+        setIsGenerating(false)
+        
+        // Add text overlays if enabled
+        if (showText) {
+          const textLines: Array<{ text: string; size: number; weight: string }> = []
+          if (songTitle) textLines.push({ text: songTitle, size: fontSize, weight: 'bold' })
+          if (artistName) textLines.push({ text: artistName, size: fontSize * 0.9, weight: 'normal' })
+          if (customDate) textLines.push({ text: customDate, size: fontSize * 0.8, weight: 'normal' })
+          if (customText) textLines.push({ text: customText, size: fontSize * 0.9, weight: 'normal' })
+          
+          if (textLines.length > 0) {
+            ctx.fillStyle = textColor
+            ctx.textAlign = 'center'
+            
+            const totalHeight = textLines.reduce((sum, line) => sum + line.size * 1.5, 0)
+            let startY
+            
+            if (textPosition === 'top') {
+              startY = canvas.height * 0.1
+            } else if (textPosition === 'bottom') {
+              startY = canvas.height - totalHeight - canvas.height * 0.1
+            } else {
+              startY = (canvas.height - totalHeight) / 2
+            }
+            
+            let currentY = startY
+            textLines.forEach(line => {
+              ctx.font = `${line.weight} ${line.size}px Arial, sans-serif`
+              ctx.fillText(line.text, canvas.width / 2, currentY)
+              currentY += line.size * 1.5
+            })
+          }
+        }
+        
+        // Add QR code if enabled
+        if (showQRCode && qrCodeUrl) {
+          QRCode.toDataURL(qrCodeUrl, { width: 150, margin: 1 })
+            .then(qrDataUrl => {
+              const qrImg = new Image()
+              qrImg.onload = () => {
+                const qrSize = 150
+                const margin = canvas.width * 0.05
+                let qrX, qrY
+                
+                switch (qrCodePosition) {
+                  case 'top-left':
+                    qrX = margin
+                    qrY = margin
+                    break
+                  case 'top-right':
+                    qrX = canvas.width - qrSize - margin
+                    qrY = margin
+                    break
+                  case 'bottom-left':
+                    qrX = margin
+                    qrY = canvas.height - qrSize - margin
+                    break
+                  case 'bottom-right':
+                  default:
+                    qrX = canvas.width - qrSize - margin
+                    qrY = canvas.height - qrSize - margin
+                    break
+                }
+                
+                ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
+              }
+              qrImg.src = qrDataUrl
+            })
+            .catch(err => console.error('Error generating QR code:', err))
+        }
+      })
+      .catch(error => {
+        console.error('Error processing audio:', error)
+        setIsGenerating(false)
+      })
+  }, [
+    audioUrl, 
+    waveformColor, 
+    waveformUseGradient,
+    waveformGradientStops,
+    waveformGradientDirection,
+    backgroundColor, 
+    backgroundUseGradient,
+    backgroundGradientStops,
+    backgroundGradientDirection,
+    selectedProduct, 
+    selectedSize, 
+    selectedRegion?.start,
+    selectedRegion?.end,
+    canvasReady, 
+    waveformStyle, 
+    showText, 
+    songTitle, 
+    artistName, 
+    customDate, 
+    customText, 
+    textColor, 
+    textPosition, 
+    fontSize, 
+    backgroundImage, 
+    backgroundOpacity, 
+    showQRCode, 
+    qrCodeUrl, 
+    qrCodePosition
+  ])
+
+  const getProductIcon = () => {
+    switch (selectedProduct) {
+      case 'poster':
+        return <Frame className="h-4 w-4" />
+      case 't-shirt':
+        return <Shirt className="h-4 w-4" />
+      case 'mug':
+        return <Coffee className="h-4 w-4" />
+      case 'canvas':
+        return <Palette className="h-4 w-4" />
+      case 'hoodie':
+        return <Layers className="h-4 w-4" />
+      default:
+        return <Frame className="h-4 w-4" />
+    }
+  }
+
+  const getFrameClass = () => {
+    if (selectedProduct === 'poster' || selectedProduct === 'canvas') {
+      return 'p-6 bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 shadow-2xl'
+    }
+    return 'p-4 bg-white shadow-xl'
+  }
+
+  if (!audioUrl) {
+    return (
+      <div className={cn(
+        'w-full aspect-[3/4] flex items-center justify-center',
+        'border-2 border-dashed rounded-lg bg-muted/20',
+        className
+      )}>
+        <p className="text-muted-foreground text-center px-4">
+          Upload an audio file to see preview
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`relative flex items-center justify-center p-8 ${className}`} ref={containerRef}>
+      {isGenerating && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-lg z-10">
+          <p className="text-sm text-muted-foreground">Generating preview...</p>
+        </div>
+      )}
+      
+      <div className="relative">
+        <div className={`rounded-lg ${getFrameClass()}`}>
+          <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-background border shadow-lg rounded-full px-3 py-1.5 flex items-center gap-2 z-10">
+            {getProductIcon()}
+            <span className="text-xs font-semibold capitalize">
+              {selectedProduct.replace('-', ' ')} - {selectedSize}
+            </span>
+          </div>
+
+          <div className="relative">
+            {(selectedProduct === 'poster' || selectedProduct === 'canvas') && (
+              <div 
+                className="absolute inset-0 rounded pointer-events-none" 
+                style={{ boxShadow: 'inset 0 0 30px rgba(0,0,0,0.1)' }} 
+              />
+            )}
+            <canvas
+              ref={canvasRef}
+              className="max-w-full h-auto rounded"
+              style={{
+                maxHeight: '550px',
+                boxShadow: selectedProduct === 'poster' || selectedProduct === 'canvas'
+                  ? '0 8px 30px rgba(0,0,0,0.5)'
+                  : '0 4px 15px rgba(0,0,0,0.2)',
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="absolute -bottom-4 left-1/2 transform -translate-x-1/2 w-4/5 h-8 bg-black/30 blur-2xl rounded-full -z-10" />
+      </div>
+    </div>
+  )
+})
