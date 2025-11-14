@@ -86,14 +86,14 @@ const initialState = {
   audioDuration: 0,
   selectedRegion: null,
   waveformColor: '#000000',
-  waveformUseGradient: false,
+  waveformUseGradient: true,
   waveformGradientStops: [
     { color: '#000000', position: 0 },
     { color: '#FF0000', position: 1 },
   ],
   waveformGradientDirection: 'horizontal' as const,
   backgroundColor: '#FFFFFF',
-  backgroundUseGradient: false,
+  backgroundUseGradient: true,
   backgroundGradientStops: [
     { color: '#FFFFFF', position: 0 },
     { color: '#000000', position: 1 },

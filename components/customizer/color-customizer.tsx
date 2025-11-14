@@ -89,13 +89,14 @@ export function ColorCustomizer() {
         
         {waveformUseGradient ? (
           <>
-            <div className="space-y-3">
+            <div className="w-full">
               <GradientPicker
                 value={stopsToGradientString(waveformGradientStops, waveformGradientDirection)}
                 onChange={(gradient: string) => {
                   const newStops = gradientStringToStops(gradient)
                   setWaveformGradientStops(newStops)
                 }}
+                width="100%"
               />
             </div>
             
@@ -199,13 +200,14 @@ export function ColorCustomizer() {
         
         {backgroundUseGradient ? (
           <>
-            <div className="space-y-3">
+            <div className="w-full">
               <GradientPicker
                 value={stopsToGradientString(backgroundGradientStops, backgroundGradientDirection)}
                 onChange={(gradient: string) => {
                   const newStops = gradientStringToStops(gradient)
                   setBackgroundGradientStops(newStops)
                 }}
+                width="100%"
               />
             </div>
             
