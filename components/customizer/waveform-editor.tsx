@@ -312,13 +312,16 @@ export function WaveformEditor() {
   }
 
   const handlePlayPause = () => {
-    if (!wavesurferRef.current || !selectedRegion) return
+    if (!wavesurferRef.current) return
     
     if (isPlaying) {
       wavesurferRef.current.pause()
     } else {
-      // Seek to the start of the selected region and play
-      wavesurferRef.current.setTime(selectedRegion.start)
+      // If there's a selected region, play from the start of it
+      // Otherwise play from current position
+      if (selectedRegion) {
+        wavesurferRef.current.setTime(selectedRegion.start)
+      }
       wavesurferRef.current.play()
     }
   }

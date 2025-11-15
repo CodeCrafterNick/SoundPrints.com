@@ -88,7 +88,8 @@ export function RoomShowcase({ mockupRef }: RoomShowcaseProps) {
     backgroundGradientStops,
     backgroundGradientDirection,
     backgroundImage,
-    backgroundOpacity,
+    backgroundImagePosition,
+    backgroundFocalPoint,
     waveformStyle,
     customText,
     songTitle,
@@ -97,7 +98,10 @@ export function RoomShowcase({ mockupRef }: RoomShowcaseProps) {
     textColor,
     showText,
     textPosition,
+    textX,
+    textY,
     fontSize,
+    fontFamily,
     showQRCode,
     qrCodeUrl,
     qrCodePosition,
@@ -105,7 +109,8 @@ export function RoomShowcase({ mockupRef }: RoomShowcaseProps) {
 
   // Capture the mockup canvas as an image whenever customizer state changes
   useEffect(() => {
-    // Add a delay to ensure canvas is rendered, including background images
+    // Use requestAnimationFrame to capture after the canvas has been updated
+    // Double RAF + small timeout to ensure all async renders complete
     const captureCanvas = () => {
       if (mockupRef?.current?.canvas) {
         try {
@@ -117,9 +122,14 @@ export function RoomShowcase({ mockupRef }: RoomShowcaseProps) {
       }
     }
 
-    // Longer delay for background image loading
-    const timer = setTimeout(captureCanvas, 300)
-    return () => clearTimeout(timer)
+    // Use timeout with double RAF to ensure canvas is fully painted
+    const timeoutId = setTimeout(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(captureCanvas)
+      })
+    }, 100)
+    
+    return () => clearTimeout(timeoutId)
   }, [
     mockupRef,
     selectedSize,
@@ -134,7 +144,8 @@ export function RoomShowcase({ mockupRef }: RoomShowcaseProps) {
     backgroundGradientStops,
     backgroundGradientDirection,
     backgroundImage,
-    backgroundOpacity,
+    backgroundImagePosition,
+    backgroundFocalPoint,
     waveformStyle,
     customText,
     songTitle,
@@ -143,7 +154,10 @@ export function RoomShowcase({ mockupRef }: RoomShowcaseProps) {
     textColor,
     showText,
     textPosition,
+    textX,
+    textY,
     fontSize,
+    fontFamily,
     showQRCode,
     qrCodeUrl,
     qrCodePosition,

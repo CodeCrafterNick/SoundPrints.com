@@ -1,10 +1,18 @@
 'use client'
 
 import { useCustomizerStore, type WaveformStyle } from '@/lib/stores/customizer-store'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, Maximize2 } from 'lucide-react'
+import { Slider } from '@/components/ui/slider'
 
 const waveformStyles: { value: WaveformStyle; label: string; description: string }[] = [
   { value: 'bars', label: 'Bars', description: 'Classic vertical bars' },
+  { value: 'smooth', label: 'Smooth', description: 'Flowing curves' },
+  { value: 'soundwave-lines', label: 'Soundwave Lines ⭐', description: 'Spotify canvas style' },
+  { value: 'mountain', label: 'Mountain ⭐', description: 'Layered silhouettes' },
+  { value: 'heartbeat', label: 'Heartbeat ⭐', description: 'ECG monitor style' },
+  { value: 'constellation', label: 'Constellation ⭐', description: 'Connected stars' },
+  { value: 'ribbon', label: 'Ribbon ⭐', description: 'Flowing silk' },
+  { value: 'spectrum', label: 'Spectrum ⭐', description: 'Concentric circles' },
   { value: 'mirror', label: 'Mirror', description: 'Mirrored waveform' },
   { value: 'circular', label: 'Circular', description: 'Circular visualization' },
   { value: 'dots', label: 'Dots', description: 'Dotted pattern' },
@@ -37,9 +45,33 @@ const waveformStyles: { value: WaveformStyle; label: string; description: string
 export function StyleCustomizer() {
   const waveformStyle = useCustomizerStore((state) => state.waveformStyle)
   const setWaveformStyle = useCustomizerStore((state) => state.setWaveformStyle)
+  const waveformSize = useCustomizerStore((state) => state.waveformSize)
+  const setWaveformSize = useCustomizerStore((state) => state.setWaveformSize)
 
   return (
     <div className="space-y-6">
+      {/* Waveform Size Control */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Maximize2 className="h-4 w-4" />
+            <label className="text-sm font-semibold">Waveform Size</label>
+          </div>
+          <span className="text-xs font-mono text-muted-foreground">{waveformSize}%</span>
+        </div>
+        <Slider
+          value={[waveformSize]}
+          onValueChange={(value) => setWaveformSize(value[0])}
+          min={0}
+          max={100}
+          step={5}
+          className="w-full"
+        />
+        <p className="text-xs text-muted-foreground">
+          Adjust waveform size (maintains 1" minimum margin from edges)
+        </p>
+      </div>
+
       {/* Waveform Style Selection */}
       <div className="space-y-3">
         <div className="flex items-center gap-2">

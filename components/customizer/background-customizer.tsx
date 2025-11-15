@@ -1,17 +1,17 @@
 'use client'
 
 import { useCustomizerStore } from '@/lib/stores/customizer-store'
-import { Image as ImageIcon, Upload } from 'lucide-react'
-import { Slider } from '@/components/ui/slider'
-import { useState } from 'react'
+import { Image as ImageIcon, Upload, X } from 'lucide-react'
+import { useState, useRef } from 'react'
 
 export function BackgroundCustomizer() {
   const backgroundImage = useCustomizerStore((state) => state.backgroundImage)
-  const backgroundOpacity = useCustomizerStore((state) => state.backgroundOpacity)
+  const backgroundFocalPoint = useCustomizerStore((state) => state.backgroundFocalPoint)
   const setBackgroundImage = useCustomizerStore((state) => state.setBackgroundImage)
-  const setBackgroundOpacity = useCustomizerStore((state) => state.setBackgroundOpacity)
+  const setBackgroundFocalPoint = useCustomizerStore((state) => state.setBackgroundFocalPoint)
   
   const [uploading, setUploading] = useState(false)
+  const imageRef = useRef<HTMLImageElement>(null)
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -23,9 +23,21 @@ export function BackgroundCustomizer() {
     const reader = new FileReader()
     reader.onloadend = () => {
       setBackgroundImage(reader.result as string)
+      setBackgroundFocalPoint(null) // Reset focal point when new image uploaded
       setUploading(false)
     }
     reader.readAsDataURL(file)
+  }
+
+  const handleFocalPointClick = (e: React.MouseEvent<HTMLImageElement>) => {
+    if (!imageRef.current) return
+    
+    const rect = imageRef.current.getBoundingClientRect()
+    const x = ((e.clientX - rect.left) / rect.width) * 100
+    const y = ((e.clientY - rect.top) / rect.height) * 100
+    
+    console.log('🎯 Setting focal point:', { x, y })
+    setBackgroundFocalPoint({ x, y })
   }
 
   return (
@@ -86,28 +98,49 @@ export function BackgroundCustomizer() {
 
         {backgroundImage && (
           <>
-            {/* Opacity Control */}
+            {/* Focal Point Picker - Always Visible */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-muted-foreground">Image Opacity</label>
-                <span className="text-xs font-mono text-muted-foreground">{backgroundOpacity}%</span>
+              <label className="text-xs font-medium text-muted-foreground">Focal Point</label>
+              
+              <div className="space-y-2">
+                <div className="relative rounded-lg overflow-hidden border-2 border-primary">
+                  <img
+                    ref={imageRef}
+                    src={backgroundImage}
+                    alt="Click to set focal point"
+                    className="w-full h-64 object-cover cursor-crosshair"
+                    onClick={handleFocalPointClick}
+                  />
+                  {backgroundFocalPoint && (
+                    <div
+                      className="absolute w-8 h-8 -ml-4 -mt-4 pointer-events-none"
+                      style={{
+                        left: `${backgroundFocalPoint.x}%`,
+                        top: `${backgroundFocalPoint.y}%`,
+                      }}
+                    >
+                      <div className="absolute inset-0 rounded-full border-2 border-white shadow-lg" />
+                      <div className="absolute inset-0 rounded-full border-2 border-primary animate-ping" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-1 h-1 bg-primary rounded-full" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {backgroundFocalPoint 
+                    ? 'Click on the image to change the focal point' 
+                    : 'Click on the image where you want to center the view'}
+                </p>
               </div>
-              <Slider
-                value={[backgroundOpacity]}
-                onValueChange={(value) => setBackgroundOpacity(value[0])}
-                min={0}
-                max={100}
-                step={5}
-                className="w-full"
-              />
-              <p className="text-xs text-muted-foreground">
-                Lower opacity makes the waveform stand out more
-              </p>
             </div>
 
             {/* Remove Image Button */}
             <button
-              onClick={() => setBackgroundImage(null)}
+              onClick={() => {
+                setBackgroundImage(null)
+                setBackgroundFocalPoint(null)
+              }}
               className="w-full py-2 px-4 border border-destructive text-destructive rounded-lg hover:bg-destructive/10 transition-colors text-sm font-medium"
             >
               Remove Background Image
@@ -121,7 +154,7 @@ export function BackgroundCustomizer() {
         <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
           <li>Use high-resolution images for best print quality</li>
           <li>Wedding photos and concert images work great</li>
-          <li>Adjust opacity to balance image and waveform</li>
+          <li>Position controls help focus on important parts</li>
           <li>Recommended: Images with good contrast</li>
         </ul>
       </div>

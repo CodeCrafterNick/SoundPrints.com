@@ -114,6 +114,28 @@ export default function CreatePage() {
               <Button 
                 size="sm" 
                 disabled={!audioUrl}
+                onClick={async () => {
+                  if (mockupRef.current?.getPrintFile) {
+                    try {
+                      const printFile = await mockupRef.current.getPrintFile()
+                      // Create download link
+                      const link = document.createElement('a')
+                      link.href = printFile
+                      link.download = `soundprint-${Date.now()}.png`
+                      link.click()
+                    } catch (error) {
+                      console.error('Failed to generate print file:', error)
+                      alert('Failed to generate print file')
+                    }
+                  }
+                }}
+                variant="outline"
+              >
+                Download Print File (Test)
+              </Button>
+              <Button 
+                size="sm" 
+                disabled={!audioUrl}
                 onClick={handleAddToCart}
               >
                 <ShoppingCart className="mr-2 h-4 w-4" />
