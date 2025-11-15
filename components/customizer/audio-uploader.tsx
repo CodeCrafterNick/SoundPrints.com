@@ -11,6 +11,8 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
 export function AudioUploader() {
   const [isLoading, setIsLoading] = useState(false)
   const audioFile = useCustomizerStore((state) => state.audioFile)
+  const audioFileName = useCustomizerStore((state) => state.audioFileName)
+  const audioFileSize = useCustomizerStore((state) => state.audioFileSize)
   const setAudioFile = useCustomizerStore((state) => state.setAudioFile)
   const setAudioUrl = useCustomizerStore((state) => state.setAudioUrl)
 
@@ -71,7 +73,7 @@ export function AudioUploader() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   }
 
-  if (audioFile) {
+  if (audioFile || audioFileName) {
     return (
       <div className="space-y-3">
         <div className="border-2 border-primary/50 bg-primary/5 rounded-lg p-4">
@@ -81,9 +83,9 @@ export function AudioUploader() {
                 <FileAudio className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <p className="font-medium text-sm">{audioFile.name}</p>
+                <p className="font-medium text-sm">{audioFile?.name || audioFileName}</p>
                 <p className="text-xs text-muted-foreground">
-                  {formatFileSize(audioFile.size)}
+                  {audioFile ? formatFileSize(audioFile.size) : audioFileSize ? formatFileSize(audioFileSize) : ''}
                 </p>
               </div>
             </div>

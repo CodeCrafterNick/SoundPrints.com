@@ -60,7 +60,7 @@ export function WaveformPreview({ onEditClick }: WaveformPreviewProps) {
         const barsCount = Math.floor(width / barStep)
         const blockSize = Math.max(1, Math.floor(regionData.length / barsCount))
 
-        ctx.fillStyle = waveformColor
+        ctx.fillStyle = '#000000'
 
         for (let i = 0; i < barsCount; i++) {
           const blockStart = blockSize * i

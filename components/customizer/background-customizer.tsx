@@ -1,8 +1,21 @@
 'use client'
 
 import { useCustomizerStore } from '@/lib/stores/customizer-store'
-import { Image as ImageIcon, Upload, X } from 'lucide-react'
+import { Image as ImageIcon, Upload, X, Sparkles } from 'lucide-react'
 import { useState, useRef } from 'react'
+
+const presetBackgrounds = [
+  { id: 'gradient-waves', name: 'Gradient Waves', path: '/backgrounds/gradient-waves.svg' },
+  { id: 'sunset-glow', name: 'Sunset Glow', path: '/backgrounds/sunset-glow.svg' },
+  { id: 'ocean-dots', name: 'Ocean Dots', path: '/backgrounds/ocean-dots.svg' },
+  { id: 'geometric-pink', name: 'Geometric Pink', path: '/backgrounds/geometric-pink.svg' },
+  { id: 'mint-waves', name: 'Mint Waves', path: '/backgrounds/mint-waves.svg' },
+  { id: 'radial-bubbles', name: 'Radial Bubbles', path: '/backgrounds/radial-bubbles.svg' },
+  { id: 'dark-grid', name: 'Dark Grid', path: '/backgrounds/dark-grid.svg' },
+  { id: 'aurora-waves', name: 'Aurora Waves', path: '/backgrounds/aurora-waves.svg' },
+  { id: 'peach-squares', name: 'Peach Squares', path: '/backgrounds/peach-squares.svg' },
+  { id: 'cosmic-stars', name: 'Cosmic Stars', path: '/backgrounds/cosmic-stars.svg' },
+]
 
 export function BackgroundCustomizer() {
   const backgroundImage = useCustomizerStore((state) => state.backgroundImage)
@@ -11,6 +24,7 @@ export function BackgroundCustomizer() {
   const setBackgroundFocalPoint = useCustomizerStore((state) => state.setBackgroundFocalPoint)
   
   const [uploading, setUploading] = useState(false)
+  const [showPresets, setShowPresets] = useState(false)
   const imageRef = useRef<HTMLImageElement>(null)
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -40,12 +54,51 @@ export function BackgroundCustomizer() {
     setBackgroundFocalPoint({ x, y })
   }
 
+  const handlePresetSelect = (path: string) => {
+    setBackgroundImage(path)
+    setBackgroundFocalPoint(null)
+    setShowPresets(false)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <ImageIcon className="w-4 h-4 text-muted-foreground" />
         <label className="text-sm font-semibold">Background Image</label>
       </div>
+
+      {/* Preset Backgrounds Toggle */}
+      <button
+        onClick={() => setShowPresets(!showPresets)}
+        className="w-full py-2 px-4 border-2 border-dashed rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-sm font-medium flex items-center justify-center gap-2"
+      >
+        <Sparkles className="w-4 h-4" />
+        {showPresets ? 'Hide' : 'Show'} Preset Backgrounds
+      </button>
+
+      {/* Preset Backgrounds Grid */}
+      {showPresets && (
+        <div className="grid grid-cols-2 gap-3">
+          {presetBackgrounds.map((preset) => (
+            <button
+              key={preset.id}
+              onClick={() => handlePresetSelect(preset.path)}
+              className={`relative aspect-[3/4] rounded-lg overflow-hidden border-2 transition-all hover:scale-105 hover:border-primary ${
+                backgroundImage === preset.path ? 'border-primary ring-2 ring-primary/20' : 'border-border'
+              }`}
+            >
+              <img
+                src={preset.path}
+                alt={preset.name}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                <p className="text-xs font-medium text-white">{preset.name}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Upload Area */}
       <div className="space-y-4">
@@ -108,7 +161,7 @@ export function BackgroundCustomizer() {
                     ref={imageRef}
                     src={backgroundImage}
                     alt="Click to set focal point"
-                    className="w-full h-64 object-cover cursor-crosshair"
+                    className="w-full h-auto object-contain cursor-crosshair"
                     onClick={handleFocalPointClick}
                   />
                   {backgroundFocalPoint && (

@@ -899,6 +899,8 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       audioUrl,
       waveformColor,
       waveformUseGradient,
+      waveformGradientStops,
+      waveformGradientDirection,
       waveformStyle,
       waveformSize,
       backgroundColor,
@@ -935,12 +937,22 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     const overlayChanged = overlayKey !== lastOverlayKey.current
     const canUseCache = !!waveformImageData.current
     
+    if (overlayChanged) {
+      console.log('📝 Overlay properties changed:', {
+        fontFamily,
+        fontSize,
+        customText,
+        showText
+      })
+    }
+    
     console.log('🔍 Render decision:', {
       waveformChanged,
       overlayChanged,
       canUseCache,
       willUseOverlayFastPath: !waveformChanged && overlayChanged && canUseCache,
-      willDoFullRegen: waveformChanged
+      willDoFullRegen: waveformChanged,
+      waveformSize
     })
     
     // If waveform unchanged but overlay changed, use overlay fast path
@@ -1032,6 +1044,10 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     console.log('🔄 Full regeneration: waveform properties changed')
     lastWaveformKey.current = waveformKey
     lastOverlayKey.current = overlayKey
+    
+    // CRITICAL: Clear the entire canvas first to force browser repaint
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    
     if (backgroundUseGradient) {
       let bgGradient
       if (backgroundGradientDirection === 'radial') {
@@ -1086,32 +1102,6 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       .then(audioBuffer => {
         console.log('Decoded audio, duration:', audioBuffer.duration)
         
-        // Clear with background color or gradient
-        if (backgroundUseGradient) {
-          let bgGradient
-          if (backgroundGradientDirection === 'radial') {
-            bgGradient = ctx.createRadialGradient(
-              canvas.width / 2, canvas.height / 2, 0,
-              canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2
-            )
-          } else if (backgroundGradientDirection === 'horizontal') {
-            bgGradient = ctx.createLinearGradient(0, 0, canvas.width, 0)
-          } else if (backgroundGradientDirection === 'vertical') {
-            bgGradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
-          } else { // diagonal
-            bgGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height)
-          }
-          // Add all gradient stops
-          const sortedStops = [...backgroundGradientStops].sort((a, b) => a.position - b.position)
-          sortedStops.forEach(stop => {
-            bgGradient.addColorStop(stop.position, stop.color)
-          })
-          ctx.fillStyle = bgGradient
-        } else {
-          ctx.fillStyle = backgroundColor
-        }
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
-        
         // Draw background image if provided (wait for it to load)
         const backgroundPromise = backgroundImage
           ? new Promise<void>((resolve) => {
@@ -1134,7 +1124,11 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
                     const focalPointPixelX = (backgroundFocalPoint.x / 100) * img.width
                     const scaledFocalPointX = (focalPointPixelX / img.width) * drawWidth
                     offsetX = (canvas.width / 2) - scaledFocalPointX
-                    console.log('📐 Calculated offsetX:', offsetX, { focalPointPixelX, scaledFocalPointX, canvasWidth: canvas.width, drawWidth })
+                    // Clamp to prevent going past edges
+                    const minOffsetX = canvas.width - drawWidth
+                    const maxOffsetX = 0
+                    offsetX = Math.max(minOffsetX, Math.min(maxOffsetX, offsetX))
+                    console.log('📐 Calculated offsetX:', offsetX, { focalPointPixelX, scaledFocalPointX, canvasWidth: canvas.width, drawWidth, clamped: [minOffsetX, maxOffsetX] })
                   } else if (backgroundImagePosition === 'left') {
                     offsetX = 0
                   } else if (backgroundImagePosition === 'right') {
@@ -1156,7 +1150,11 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
                     const focalPointPixelY = (backgroundFocalPoint.y / 100) * img.height
                     const scaledFocalPointY = (focalPointPixelY / img.height) * drawHeight
                     offsetY = (canvas.height / 2) - scaledFocalPointY
-                    console.log('📐 Calculated offsetY:', offsetY, { focalPointPixelY, scaledFocalPointY, canvasHeight: canvas.height, drawHeight })
+                    // Clamp to prevent going past edges
+                    const minOffsetY = canvas.height - drawHeight
+                    const maxOffsetY = 0
+                    offsetY = Math.max(minOffsetY, Math.min(maxOffsetY, offsetY))
+                    console.log('📐 Calculated offsetY:', offsetY, { focalPointPixelY, scaledFocalPointY, canvasHeight: canvas.height, drawHeight, clamped: [minOffsetY, maxOffsetY] })
                   } else if (backgroundImagePosition === 'top') {
                     offsetY = 0
                   } else if (backgroundImagePosition === 'bottom') {
@@ -1174,17 +1172,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
             })
           : Promise.resolve()
         
-        return backgroundPromise.then(() => {
-          // Add gradient overlay
-          const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
-          gradient.addColorStop(0, 'rgba(255, 255, 255, 0.08)')
-          gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0)')
-          gradient.addColorStop(1, 'rgba(0, 0, 0, 0.08)')
-          ctx.fillStyle = gradient
-          ctx.fillRect(0, 0, canvas.width, canvas.height)
-          
-          return audioBuffer
-        })
+        return backgroundPromise.then(() => audioBuffer)
       })
       .then(async (audioBuffer) => {
         const rawData = audioBuffer.getChannelData(0)
@@ -1218,10 +1206,14 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         const waveformX = padding
         const waveformY = (canvas.height - waveformHeight) / 2
         
+        console.log('📐 Waveform dimensions:', { waveformSize, waveformWidth, waveformHeight, canvasWidth: canvas.width, canvasHeight: canvas.height })
+        
         const barWidth = 6
         const barGap = 1
         const barTotalWidth = barWidth + barGap
         const samples = Math.floor(waveformWidth / barTotalWidth)
+        
+        console.log('📊 Waveform bars:', { samples, barWidth, barGap, totalBars: samples })
         
         // Ensure we have enough data to create meaningful samples
         const blockSize = Math.max(1, Math.floor(regionData.length / samples))

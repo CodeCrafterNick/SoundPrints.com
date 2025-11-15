@@ -13,6 +13,8 @@ export interface GradientStop {
 interface CustomizerState {
   // Audio
   audioFile: File | null
+  audioFileName: string | null
+  audioFileSize: number | null
   audioUrl: string | null
   audioDuration: number
   selectedRegion: { start: number; end: number } | null
@@ -111,6 +113,8 @@ interface CustomizerState {
 
 const initialState = {
   audioFile: null,
+  audioFileName: null,
+  audioFileSize: null,
   audioUrl: null,
   audioDuration: 0,
   selectedRegion: null,
@@ -169,6 +173,8 @@ export const useCustomizerStore = create<CustomizerState>()(
       
       setAudioFile: (file) => set({ 
         audioFile: file,
+        audioFileName: file?.name || null,
+        audioFileSize: file?.size || null,
         audioUrl: file ? URL.createObjectURL(file) : null 
       }),
       setAudioUrl: (url) => set({ audioUrl: url }),
@@ -186,7 +192,11 @@ export const useCustomizerStore = create<CustomizerState>()(
       setBackgroundImagePosition: (position) => set({ backgroundImagePosition: position }),
       setBackgroundFocalPoint: (point) => set({ backgroundFocalPoint: point }),
       setWaveformStyle: (style) => set({ waveformStyle: style }),
-      setWaveformSize: (size) => set({ waveformSize: Math.max(0, Math.min(100, size)) }),
+      setWaveformSize: (size) => {
+        const clamped = Math.max(0, Math.min(100, size))
+        console.log('📏 setWaveformSize called:', size, '→', clamped)
+        set({ waveformSize: clamped })
+      },
       setSelectedProduct: (product) => set({ selectedProduct: product }),
       setSelectedSize: (size) => set({ selectedSize: size }),
       setCustomText: (text) => set({ customText: text }),
@@ -228,6 +238,8 @@ export const useCustomizerStore = create<CustomizerState>()(
       name: 'soundprints-customizer',
       partialize: (state) => ({
         audioUrl: state.audioUrl, // Persist the Supabase URL
+        audioFileName: state.audioFileName,
+        audioFileSize: state.audioFileSize,
         waveformColor: state.waveformColor,
         backgroundColor: state.backgroundColor,
         waveformStyle: state.waveformStyle,

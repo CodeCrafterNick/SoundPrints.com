@@ -1,0 +1,16 @@
+<svg width="1200" height="1600" viewBox="0 0 1200 1600" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="geometric" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f093fb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f5576c;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="1600" fill="url(#geometric)"/>
+  <polygon points="0,0 400,0 0,533" fill="#ffffff" opacity="0.05"/>
+  <polygon points="1200,0 800,0 1200,533" fill="#ffffff" opacity="0.05"/>
+  <polygon points="0,1600 400,1600 0,1067" fill="#ffffff" opacity="0.05"/>
+  <polygon points="1200,1600 800,1600 1200,1067" fill="#ffffff" opacity="0.05"/>
+  <circle cx="600" cy="800" r="200" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.1"/>
+  <circle cx="600" cy="800" r="300" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.1"/>
+  <circle cx="600" cy="800" r="400" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.1"/>
+</svg>

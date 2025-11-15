@@ -48,9 +48,9 @@ export function WaveformEditor() {
 
     const wavesurfer = WaveSurfer.create({
       container: waveformRef.current,
-      waveColor: waveformColor,
-      progressColor: waveformColor,
-      cursorColor: waveformColor,
+      waveColor: '#000000',
+      progressColor: '#000000',
+      cursorColor: '#000000',
       cursorWidth: 2,
       height: 200,
       barWidth: 3,
@@ -77,7 +77,7 @@ export function WaveformEditor() {
         const barStep = barWidth + barGap
         const barsCount = Math.floor(width / barStep)
         
-        ctx.fillStyle = waveformColor
+        ctx.fillStyle = '#000000'
 
         for (let i = 0; i < barsCount; i++) {
           const x = i * barStep
@@ -198,7 +198,7 @@ export function WaveformEditor() {
         const wrapper = wavesurferRef.current.getWrapper()
         const cursor = wrapper.querySelector('.wavesurfer-cursor') as HTMLElement
         if (cursor) {
-          cursor.style.borderRightColor = waveformColor
+          cursor.style.borderRightColor = '#000000'
           cursor.style.borderRightWidth = '2px'
         }
       }

@@ -3,6 +3,7 @@
 import { useCustomizerStore, type WaveformStyle } from '@/lib/stores/customizer-store'
 import { Sparkles, Maximize2 } from 'lucide-react'
 import { Slider } from '@/components/ui/slider'
+import { useState, useEffect } from 'react'
 
 const waveformStyles: { value: WaveformStyle; label: string; description: string }[] = [
   { value: 'bars', label: 'Bars', description: 'Classic vertical bars' },
@@ -47,6 +48,20 @@ export function StyleCustomizer() {
   const setWaveformStyle = useCustomizerStore((state) => state.setWaveformStyle)
   const waveformSize = useCustomizerStore((state) => state.waveformSize)
   const setWaveformSize = useCustomizerStore((state) => state.setWaveformSize)
+  
+  const [localSize, setLocalSize] = useState(waveformSize)
+  
+  // Sync local state with store
+  useEffect(() => {
+    setLocalSize(waveformSize)
+  }, [waveformSize])
+  
+  // Update store immediately (no debounce)
+  const handleSizeChange = (value: number[]) => {
+    const newSize = value[0]
+    setLocalSize(newSize)
+    setWaveformSize(newSize)
+  }
 
   return (
     <div className="space-y-6">
@@ -57,12 +72,12 @@ export function StyleCustomizer() {
             <Maximize2 className="h-4 w-4" />
             <label className="text-sm font-semibold">Waveform Size</label>
           </div>
-          <span className="text-xs font-mono text-muted-foreground">{waveformSize}%</span>
+          <span className="text-xs font-mono text-muted-foreground">{localSize}%</span>
         </div>
         <Slider
-          value={[waveformSize]}
-          onValueChange={(value) => setWaveformSize(value[0])}
-          min={0}
+          value={[localSize]}
+          onValueChange={handleSizeChange}
+          min={20}
           max={100}
           step={5}
           className="w-full"

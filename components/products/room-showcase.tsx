@@ -80,6 +80,7 @@ export function RoomShowcase({ mockupRef }: RoomShowcaseProps) {
     selectedSize,
     selectedRegion,
     waveformColor,
+    waveformSize,
     waveformUseGradient,
     waveformGradientStops,
     waveformGradientDirection,
@@ -136,6 +137,7 @@ export function RoomShowcase({ mockupRef }: RoomShowcaseProps) {
     selectedRegion?.start,
     selectedRegion?.end,
     waveformColor,
+    waveformSize,
     waveformUseGradient,
     waveformGradientStops,
     waveformGradientDirection,
@@ -172,14 +174,22 @@ export function RoomShowcase({ mockupRef }: RoomShowcaseProps) {
 
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    if (!ctx) {
+      console.log('No canvas context available')
+      return
+    }
 
     const bgImage = new Image()
     bgImage.crossOrigin = 'anonymous'
     bgImage.src = '/mockups/living-room.png'
     
     bgImage.onerror = (e) => {
-      console.error('Failed to load background image:', e)
+      console.error('Failed to load background image:', '/mockups/living-room.png', 'Error:', e.type || 'unknown error')
+      // Draw a gray background as fallback and still try to render artwork
+      if (canvas.width && canvas.height) {
+        ctx.fillStyle = '#f0f0f0'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+      }
     }
     
     bgImage.onload = () => {
@@ -215,7 +225,7 @@ export function RoomShowcase({ mockupRef }: RoomShowcaseProps) {
       artworkImage.src = artworkDataUrl
       
       artworkImage.onerror = (e) => {
-        console.error('Failed to load artwork image:', e)
+        console.error('Failed to load artwork image:', 'Error:', e.type || e)
       }
       
       artworkImage.onload = () => {
