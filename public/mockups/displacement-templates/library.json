@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastUpdated": "2025-11-16T00:53:30.609Z",
+  "lastUpdated": "2025-11-18T19:15:36.442Z",
   "templates": [
     {
       "id": "bella-canvas-3001-natural-front",
@@ -30,6 +30,96 @@
         "y": 0.35,
         "width": 0.4,
         "height": 0.3
+      }
+    },
+    {
+      "id": "poster-12x16",
+      "name": "Poster 12x16",
+      "productType": "poster",
+      "category": "wall-art",
+      "size": "12x16",
+      "printArea": {
+        "x": 0.05,
+        "y": 0.05,
+        "width": 0.9,
+        "height": 0.9
+      },
+      "requiresDisplacement": false,
+      "canvasSize": {
+        "width": 3600,
+        "height": 4800
+      }
+    },
+    {
+      "id": "poster-18x24",
+      "name": "Poster 18x24",
+      "productType": "poster",
+      "category": "wall-art",
+      "size": "18x24",
+      "printArea": {
+        "x": 0.05,
+        "y": 0.05,
+        "width": 0.9,
+        "height": 0.9
+      },
+      "requiresDisplacement": false,
+      "canvasSize": {
+        "width": 5400,
+        "height": 7200
+      }
+    },
+    {
+      "id": "poster-24x36",
+      "name": "Poster 24x36",
+      "productType": "poster",
+      "category": "wall-art",
+      "size": "24x36",
+      "printArea": {
+        "x": 0.05,
+        "y": 0.05,
+        "width": 0.9,
+        "height": 0.9
+      },
+      "requiresDisplacement": false,
+      "canvasSize": {
+        "width": 7200,
+        "height": 10800
+      }
+    },
+    {
+      "id": "canvas-16x20",
+      "name": "Canvas 16x20",
+      "productType": "canvas",
+      "category": "wall-art",
+      "size": "16x20",
+      "printArea": {
+        "x": 0.05,
+        "y": 0.05,
+        "width": 0.9,
+        "height": 0.9
+      },
+      "requiresDisplacement": false,
+      "canvasSize": {
+        "width": 4800,
+        "height": 6000
+      }
+    },
+    {
+      "id": "canvas-20x24",
+      "name": "Canvas 20x24",
+      "productType": "canvas",
+      "category": "wall-art",
+      "size": "20x24",
+      "printArea": {
+        "x": 0.05,
+        "y": 0.05,
+        "width": 0.9,
+        "height": 0.9
+      },
+      "requiresDisplacement": false,
+      "canvasSize": {
+        "width": 6000,
+        "height": 7200
       }
     }
   ]

@@ -8,6 +8,7 @@ import { WaveformPreview } from '@/components/customizer/waveform-preview'
 import { WaveformCanvasPreview } from '@/components/products/waveform-canvas-preview'
 import { ProductCategorySelector } from '@/components/products/product-category-selector'
 import { ProductMockupDisplay } from '@/components/products/product-mockup-display'
+import { ProductGrid } from '@/components/products/product-grid'
 import { StyleCustomizer } from '@/components/customizer/style-customizer'
 import { ColorCustomizer } from '@/components/customizer/color-customizer'
 import { TextCustomizer } from '@/components/customizer/text-customizer'
@@ -24,7 +25,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion'
-import { ChevronLeft, ShoppingCart, Check, Upload, Activity, Sparkles, Palette, Type, Image, QrCode, Package, Edit3 } from 'lucide-react'
+import { ChevronLeft, ShoppingCart, Check, Upload, Activity, Sparkles, Palette, Type, Image, QrCode, Package, Edit3, Loader2 } from 'lucide-react'
 import { useCustomizerStore } from '@/lib/stores/customizer-store'
 import { useCartStore } from '@/lib/stores/cart-store'
 import { toast } from 'sonner'
@@ -32,6 +33,8 @@ import { toast } from 'sonner'
 export default function CreatePage() {
   const [openAccordion, setOpenAccordion] = useState<string>('upload')
   const [hasAutoAdvanced, setHasAutoAdvanced] = useState({ upload: false, waveform: false })
+  const [generatedMockups, setGeneratedMockups] = useState<any[]>([])
+  const [isGenerating, setIsGenerating] = useState(false)
   const mockupRef = useRef<ProductMockupRef>(null)
   const audioFile = useCustomizerStore((state) => state.audioFile)
   const audioUrl = useCustomizerStore((state) => state.audioUrl)
@@ -91,6 +94,61 @@ export default function CreatePage() {
     toast.success('Added to cart!', {
       description: `${selectedProduct.replace('-', ' ')} (${selectedSize}) has been added to your cart.`,
     })
+  }
+
+  const handleGenerateAllProducts = async () => {
+    if (!mockupRef.current) {
+      toast.error('Please create your design first')
+      return
+    }
+
+    setIsGenerating(true)
+    
+    try {
+      // Get design canvas from mockup ref
+      const canvas = mockupRef.current.canvas
+      if (!canvas) {
+        throw new Error('Canvas not ready')
+      }
+
+      // Convert canvas to blob
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((b: Blob | null) => {
+          if (b) resolve(b)
+          else reject(new Error('Failed to convert canvas to blob'))
+        }, 'image/png')
+      })
+
+      // Create form data
+      const formData = new FormData()
+      formData.append('design', blob, 'waveform.png')
+      formData.append('category', 'all')
+      formData.append('uploadToStorage', 'true')
+
+      // Call pre-generation API
+      const response = await fetch('/api/pregenerate-mockups', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to generate mockups')
+      }
+
+      const { mockups, stats } = await response.json()
+      
+      setGeneratedMockups(mockups)
+      setOpenAccordion('all-products')
+      
+      toast.success(`Generated ${mockups.length} products in ${stats.totalTime}ms!`, {
+        description: `${stats.cached} from cache, ${stats.generated} newly generated`
+      })
+    } catch (error) {
+      console.error('Pre-generation error:', error)
+      toast.error('Failed to generate products')
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   return (
@@ -317,6 +375,53 @@ export default function CreatePage() {
                       Select a product and size
                     </p>
                     <ProductSelector />
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="all-products" disabled={!audioUrl}>
+                <AccordionTrigger className="text-lg font-semibold">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-muted-foreground" />
+                    <span>View All Products</span>
+                    {generatedMockups.length > 0 && (
+                      <Check className="h-4 w-4 text-green-600" />
+                    )}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="pt-2 space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      Generate mockups for all available products instantly
+                    </p>
+                    
+                    <Button 
+                      onClick={handleGenerateAllProducts}
+                      disabled={isGenerating}
+                      className="w-full"
+                      size="lg"
+                    >
+                      {isGenerating ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Generate All Products
+                        </>
+                      )}
+                    </Button>
+
+                    {generatedMockups.length > 0 && (
+                      <div className="mt-6">
+                        <ProductGrid 
+                          mockups={generatedMockups}
+                          designDataUrl={audioUrl || undefined}
+                        />
+                      </div>
+                    )}
                   </div>
                 </AccordionContent>
               </AccordionItem>
