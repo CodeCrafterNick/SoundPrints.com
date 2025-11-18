@@ -1,0 +1,15 @@
+{
+  "id": "mannequin-white-model",
+  "name": "Mannequin - White Shirt - Model",
+  "productType": "t-shirt",
+  "color": "white",
+  "angle": "front",
+  "basePath": "base.jpg",
+  "displacementPath": "displacement.png",
+  "printArea": {
+    "x": 0.3,
+    "y": 0.35,
+    "width": 0.4,
+    "height": 0.3
+  }
+}

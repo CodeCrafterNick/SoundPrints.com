@@ -1,0 +1,15 @@
+{
+  "id": "bella-canvas-3001-natural-front",
+  "name": "Bella Canvas 3001 - Natural - Front",
+  "productType": "t-shirt",
+  "color": "natural",
+  "angle": "front",
+  "basePath": "base.jpg",
+  "displacementPath": "displacement.png",
+  "printArea": {
+    "x": 0.3,
+    "y": 0.25,
+    "width": 0.4,
+    "height": 0.5
+  }
+}

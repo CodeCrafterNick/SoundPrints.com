@@ -1,0 +1,17 @@
+{
+  "id": "white-shirt-front",
+  "name": "White T-Shirt - Front View",
+  "productType": "t-shirt",
+  "color": "white",
+  "angle": "front",
+  "basePath": "base.png",
+  "maskPath": "mask.png",
+  "shadowPath": "shadow.png",
+  "highlightPath": "highlight.png",
+  "printArea": {
+    "x": 0.4698,
+    "y": 0.4223,
+    "width": 0.1237,
+    "height": 0.1908
+  }
+}

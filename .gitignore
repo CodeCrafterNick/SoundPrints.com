@@ -49,5 +49,21 @@ next-env.d.ts
 # Supabase
 .supabase/
 
+# Cache
+.cache/
+
+# Test files
+test-*.js
+test-*.png
+test-*.jpg
+
+# Large mockup files
+public/mockups/*.psd
+public/mockups/*.jpg
+public/mockups/*.png
+public/mockups/white-shirt/
+public/mockups/blueprint-images/
+*.json.backup
+
 # Playwright MCP (test screenshots)
 .playwright-mcp/

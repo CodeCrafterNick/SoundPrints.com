@@ -19,6 +19,13 @@ const products = [
     basePrice: 34.99,
   },
   {
+    id: 't-shirt-white-model' as ProductType,
+    name: 'T-Shirt (Model)',
+    description: 'White tee on model',
+    sizes: ['S', 'M', 'L', 'XL', 'XXL'],
+    basePrice: 34.99,
+  },
+  {
     id: 'mug' as ProductType,
     name: 'Mug',
     description: 'Ceramic coffee mug',

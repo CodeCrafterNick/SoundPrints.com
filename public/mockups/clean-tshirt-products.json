@@ -1,0 +1,116 @@
+{
+  "createdAt": "2025-11-15T23:04:56.904Z",
+  "totalBatches": 6,
+  "imageId": "691905bb1c8a1a703c9e759b",
+  "providerId": 410,
+  "batches": [
+    {
+      "batchNum": 1,
+      "productId": "691906f9bbf321ba0907930d",
+      "colors": [
+        "White",
+        "Black",
+        "Navy",
+        "Red",
+        "Athletic Heather",
+        "Heather Navy",
+        "Dark Grey Heather",
+        "Natural",
+        "Light Blue",
+        "Forest",
+        "Maroon",
+        "Pink"
+      ]
+    },
+    {
+      "batchNum": 2,
+      "productId": "69190700c52e8248460e3662",
+      "colors": [
+        "Ash",
+        "Soft Pink",
+        "Heather Mauve",
+        "Heather Clay",
+        "Heather Orange",
+        "Heather Red",
+        "Heather True Royal",
+        "Heather Kelly",
+        "Heather Mint",
+        "Heather Ice Blue",
+        "Heather Aqua",
+        "Heather Slate"
+      ]
+    },
+    {
+      "batchNum": 3,
+      "productId": "69190705f4df3eba3e037ce8",
+      "colors": [
+        "Brown",
+        "Tan",
+        "Soft Cream",
+        "Vintage White",
+        "Heather Dust",
+        "Silver",
+        "Sage",
+        "Heather Olive",
+        "Military Green",
+        "Olive",
+        "Army",
+        "Dark Grey"
+      ]
+    },
+    {
+      "batchNum": 4,
+      "productId": "6919070a656a0c846005da26",
+      "colors": [
+        "Orange",
+        "Burnt Orange",
+        "Gold",
+        "Yellow",
+        "Mustard",
+        "Kelly",
+        "Leaf",
+        "Mint",
+        "Aqua",
+        "Turquoise",
+        "Teal",
+        "Ocean Blue"
+      ]
+    },
+    {
+      "batchNum": 5,
+      "productId": "6919070f3f5cf15ea701090b",
+      "colors": [
+        "Baby Blue",
+        "Steel Blue",
+        "True Royal",
+        "Heather Midnight Navy",
+        "Heather Deep Teal",
+        "Team Purple",
+        "Heather Team Purple",
+        "Lilac",
+        "Mauve",
+        "Berry",
+        "Cardinal",
+        "Asphalt"
+      ]
+    },
+    {
+      "batchNum": 6,
+      "productId": "691907141801486f9500abb4",
+      "colors": [
+        "Heather Prism Peach",
+        "Heather Prism Mint",
+        "Heather Prism Ice Blue",
+        "Heather Prism Lilac",
+        "Heather Prism Dusty Blue",
+        "Black Heather",
+        "Solid Black Blend",
+        "Vintage Black",
+        "Heather Forest",
+        "Heather Raspberry",
+        "Autumn",
+        "Charity Pink"
+      ]
+    }
+  ]
+}

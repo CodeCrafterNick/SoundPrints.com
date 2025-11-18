@@ -1,0 +1,36 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-11-16T00:53:30.609Z",
+  "templates": [
+    {
+      "id": "bella-canvas-3001-natural-front",
+      "name": "Bella Canvas 3001 - Natural - Front",
+      "productType": "t-shirt",
+      "color": "natural",
+      "angle": "front",
+      "basePath": "bella-canvas-3001-natural-front/base.jpg",
+      "displacementPath": "bella-canvas-3001-natural-front/displacement.png",
+      "printArea": {
+        "x": 0.3,
+        "y": 0.25,
+        "width": 0.4,
+        "height": 0.5
+      }
+    },
+    {
+      "id": "mannequin-white-model",
+      "name": "Mannequin - White Shirt - Model",
+      "productType": "t-shirt",
+      "color": "white",
+      "angle": "front",
+      "basePath": "mannequin-white-model/base.jpg",
+      "displacementPath": "mannequin-white-model/displacement.png",
+      "printArea": {
+        "x": 0.3,
+        "y": 0.35,
+        "width": 0.4,
+        "height": 0.3
+      }
+    }
+  ]
+}

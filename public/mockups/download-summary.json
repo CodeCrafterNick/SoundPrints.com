@@ -1,0 +1,40 @@
+{
+  "drinkware": [
+    {
+      "name": "11oz White Mug (ORCA Coatings)",
+      "images": 4
+    },
+    {
+      "name": "Mug 15oz",
+      "images": 4
+    },
+    {
+      "name": "Tumbler 20oz",
+      "images": 4
+    },
+    {
+      "name": "CamelBak Eddy Water Bottle",
+      "images": 16
+    }
+  ],
+  "wallArt": [
+    {
+      "name": "Paper Poster",
+      "images": 24
+    },
+    {
+      "name": "Matte Vertical Posters",
+      "images": 52
+    },
+    {
+      "name": "Stretched Canvas",
+      "images": 40
+    },
+    {
+      "name": "Framed Vertical Posters",
+      "images": 36
+    }
+  ],
+  "totalImages": 180,
+  "downloadDate": "2025-11-15T22:45:38.395Z"
+}

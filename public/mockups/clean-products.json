@@ -1,0 +1,142 @@
+{
+  "tshirts": [
+    {
+      "batchNum": 1,
+      "colors": [
+        "White",
+        "Black",
+        "Heather Grey",
+        "Navy",
+        "Dark Grey Heather",
+        "True Royal",
+        "Purple",
+        "Red",
+        "Leaf",
+        "Light Blue",
+        "Light Pink",
+        "Silver"
+      ]
+    },
+    {
+      "batchNum": 2,
+      "colors": [
+        "Asphalt",
+        "Brown",
+        "Kelly",
+        "Team Purple",
+        "Maroon",
+        "Forest Green",
+        "Heather Navy",
+        "Heather Deep Teal",
+        "Charity Pink",
+        "Heather Red",
+        "Heather Orange",
+        "Gold"
+      ]
+    },
+    {
+      "batchNum": 3,
+      "colors": [
+        "Heather Orchid",
+        "Deep Heather",
+        "Heather Cardinal",
+        "Heather Forest",
+        "Olive",
+        "Teal",
+        "Sunset",
+        "Steel Blue",
+        "Mauve",
+        "Mint",
+        "Yellow Haze",
+        "Dusty Blue"
+      ]
+    },
+    {
+      "batchNum": 4,
+      "colors": [
+        "Orchid",
+        "Heather Midnight Navy",
+        "Heather Maroon",
+        "Heather Royal",
+        "Heather True Royal",
+        "Heather Kelly",
+        "Aqua",
+        "Solid Light Pink",
+        "Solid Warm Gray",
+        "Heather Dust",
+        "Heather Peach",
+        "Soft Cream"
+      ]
+    },
+    {
+      "batchNum": 5,
+      "colors": [
+        "Heather Mint",
+        "Heather Columbia Blue",
+        "Autumn",
+        "Solid Red Triblend",
+        "Heather Clay",
+        "Heather Raspberry",
+        "Storm",
+        "Pebble",
+        "Soft Pink",
+        "Tan",
+        "Heather Sunset",
+        "Athletic Heather"
+      ]
+    },
+    {
+      "batchNum": 6,
+      "colors": [
+        "Canvas Red",
+        "Heather Slate",
+        "Heather Team Purple",
+        "Ash",
+        "Solid Tahiti Blue",
+        "Athletic Blue",
+        "Athletic Maroon",
+        "Heather Military Green",
+        "Natural",
+        "Heather Prism Peach",
+        "Heather Ice Blue",
+        "Heather Aqua"
+      ]
+    }
+  ],
+  "drinkware": [
+    {
+      "name": "11oz White Mug (ORCA)",
+      "blueprintId": 535
+    },
+    {
+      "name": "Mug 15oz",
+      "blueprintId": 425
+    },
+    {
+      "name": "Tumbler 20oz",
+      "blueprintId": 353
+    },
+    {
+      "name": "CamelBak Water Bottle",
+      "blueprintId": 597
+    }
+  ],
+  "wallArt": [
+    {
+      "name": "Paper Poster",
+      "blueprintId": 554
+    },
+    {
+      "name": "Matte Vertical Posters",
+      "blueprintId": 282
+    },
+    {
+      "name": "Stretched Canvas",
+      "blueprintId": 555
+    },
+    {
+      "name": "Framed Vertical Posters",
+      "blueprintId": 540
+    }
+  ]
+}

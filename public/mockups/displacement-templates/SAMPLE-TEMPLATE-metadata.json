@@ -1,0 +1,26 @@
+{
+  "id": "bella-canvas-3001-white-front",
+  "name": "Bella+Canvas 3001 White T-Shirt (Front View)",
+  "productType": "tshirt",
+  "color": "white",
+  "angle": "front",
+  "basePath": "bella-canvas-3001-white/base.png",
+  "displacementPath": "bella-canvas-3001-white/displacement.png",
+  "maskPath": "bella-canvas-3001-white/mask.png",
+  "shadowPath": "bella-canvas-3001-white/shadow.png",
+  "printArea": {
+    "x": 0.35,
+    "y": 0.3,
+    "width": 0.3,
+    "height": 0.4,
+    "rotation": 0
+  },
+  "metadata": {
+    "resolution": {
+      "width": 2400,
+      "height": 3000
+    },
+    "source": "Printify Blueprint",
+    "license": "Commercial Use"
+  }
+}

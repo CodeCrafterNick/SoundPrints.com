@@ -5,6 +5,9 @@ import Link from 'next/link'
 import { AudioUploader } from '@/components/customizer/audio-uploader'
 import { WaveformEditor } from '@/components/customizer/waveform-editor'
 import { WaveformPreview } from '@/components/customizer/waveform-preview'
+import { WaveformCanvasPreview } from '@/components/products/waveform-canvas-preview'
+import { ProductCategorySelector } from '@/components/products/product-category-selector'
+import { ProductMockupDisplay } from '@/components/products/product-mockup-display'
 import { StyleCustomizer } from '@/components/customizer/style-customizer'
 import { ColorCustomizer } from '@/components/customizer/color-customizer'
 import { TextCustomizer } from '@/components/customizer/text-customizer'
@@ -320,28 +323,39 @@ export default function CreatePage() {
             </Accordion>
           </div>
 
-          {/* Right Side - Live Preview with Room Scenes */}
-          <div className="bg-background/95 backdrop-blur rounded-lg shadow-xl p-8">
-            <div className="mb-6 text-center">
-              <h2 className="text-2xl font-bold mb-2">Live Preview</h2>
-              <p className="text-muted-foreground">
-                Your design updates in real-time
-              </p>
-            </div>
-            
-            {/* Hidden ProductMockup to generate the canvas */}
-            <div className="hidden">
-              <ProductMockup ref={mockupRef} />
-            </div>
-            
-            {/* Display either room showcase or plain mockup */}
-            {audioUrl ? (
-              <RoomShowcase mockupRef={mockupRef} />
-            ) : (
-              <div className="w-full max-w-2xl mx-auto">
-                <ProductMockup className="w-full" />
+          {/* Right Side - Preview Stack */}
+          <div className="space-y-6">
+            {/* Top: Clean Waveform Preview - Hidden for now */}
+            {false && (
+              <div className="bg-background/95 backdrop-blur rounded-lg shadow-xl p-6">
+                <h3 className="text-lg font-semibold mb-4">Your Design</h3>
+                <WaveformCanvasPreview />
               </div>
             )}
+
+            {/* Middle: Large Product Mockup */}
+            <div className="bg-background/95 backdrop-blur rounded-lg shadow-xl p-6">
+              <h3 className="text-lg font-semibold mb-4">Product Preview</h3>
+              {/* Hidden ProductMockup to generate the canvas */}
+              <div className="hidden">
+                <ProductMockup ref={mockupRef} />
+              </div>
+              
+              {/* Display product with waveform overlay */}
+              {audioUrl ? (
+                <ProductMockupDisplay mockupRef={mockupRef} />
+              ) : (
+                <div className="w-full aspect-square bg-muted rounded-lg flex items-center justify-center">
+                  <p className="text-muted-foreground">Upload audio to see product preview</p>
+                </div>
+              )}
+            </div>
+
+            {/* Bottom: Product Category Selector */}
+            <div className="bg-background/95 backdrop-blur rounded-lg shadow-xl p-6">
+              <h3 className="text-lg font-semibold mb-4">Choose Product</h3>
+              <ProductCategorySelector />
+            </div>
           </div>
         </div>
       </main>

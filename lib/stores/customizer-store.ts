@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type ProductType = 'poster' | 't-shirt' | 'mug' | 'canvas' | 'hoodie'
+export type ProductType = 'poster' | 't-shirt' | 't-shirt-white-model' | 'mug' | 'canvas' | 'hoodie'
 export type WaveformStyle = 'bars' | 'smooth' | 'soundwave-lines' | 'mountain' | 'heartbeat' | 'constellation' | 'ribbon' | 'spectrum' | 'mirror' | 'circular' | 'dots' | 'radial' | 'galaxy' | 'frequency' | 'particle' | 'ripple' | 'soundwave' | 'wave3d' | 'neon' | 'gradient-bars' | 'vinyl' | 'equalizer' | 'pulse' | 'geometric' | 'dna' | 'moire' | 'fluid' | 'kaleidoscope' | 'glitch' | 'perlin' | 'crystals' | 'tunnel' | 'bloom' | 'aurora' | 'fire'
 export type ArtisticTextStyle = 'none' | 'wordcloud' | 'spiral' | 'wave' | 'circular' | 'scattered'
 
@@ -65,6 +65,10 @@ interface CustomizerState {
   artisticTextStyle: ArtisticTextStyle
   artisticTextColor: string
   artisticTextOpacity: number
+  
+  // Hydration
+  _hasHydrated: boolean
+  setHasHydrated: (hasHydrated: boolean) => void
   
   // Actions
   setAudioFile: (file: File | null) => void
@@ -137,8 +141,8 @@ const initialState = {
   backgroundFocalPoint: null,
   waveformStyle: 'bars' as WaveformStyle,
   waveformSize: 80, // 80% of available space
-  selectedProduct: 'poster' as ProductType,
-  selectedSize: '18x24',
+  selectedProduct: 't-shirt-white-model' as ProductType,
+  selectedSize: 'M',
   customText: '',
   songTitle: '',
   artistName: '',
@@ -170,6 +174,7 @@ export const useCustomizerStore = create<CustomizerState>()(
   persist(
     (set) => ({
       ...initialState,
+      _hasHydrated: false,
       
       setAudioFile: (file) => set({ 
         audioFile: file,
@@ -232,6 +237,7 @@ export const useCustomizerStore = create<CustomizerState>()(
       },
       setArtisticTextColor: (color) => set({ artisticTextColor: color }),
       setArtisticTextOpacity: (opacity) => set({ artisticTextOpacity: Math.max(0, Math.min(1, opacity)) }),
+      setHasHydrated: (hasHydrated) => set({ _hasHydrated: hasHydrated }),
       reset: () => set(initialState),
     }),
     {
@@ -248,6 +254,9 @@ export const useCustomizerStore = create<CustomizerState>()(
         textColor: state.textColor,
         showText: state.showText,
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated?.(true)
+      },
     }
   )
 )

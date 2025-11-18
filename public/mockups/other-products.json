@@ -1,0 +1,55 @@
+{
+  "drinkware": [
+    {
+      "productId": "691900673383cd93be038d70",
+      "blueprintId": 535,
+      "name": "11oz White Mug (ORCA Coatings)",
+      "variantCount": 1
+    },
+    {
+      "productId": "6919006ccf4bca7030060fb4",
+      "blueprintId": 425,
+      "name": "Mug 15oz",
+      "variantCount": 1
+    },
+    {
+      "productId": "691900733dcaa8af1806ba24",
+      "blueprintId": 353,
+      "name": "Tumbler 20oz",
+      "variantCount": 1
+    },
+    {
+      "productId": "6919007987ce171c9b09a4f3",
+      "blueprintId": 597,
+      "name": "CamelBak Eddy Water Bottle",
+      "variantCount": 4
+    }
+  ],
+  "wallArt": [
+    {
+      "productId": "69190080656a0c846005d85f",
+      "blueprintId": 554,
+      "name": "Paper Poster",
+      "variantCount": 12
+    },
+    {
+      "productId": "691900856575d7559e068a3b",
+      "blueprintId": 282,
+      "name": "Matte Vertical Posters",
+      "variantCount": 13
+    },
+    {
+      "productId": "6919008d656a0c846005d868",
+      "blueprintId": 555,
+      "name": "Stretched Canvas",
+      "variantCount": 10
+    },
+    {
+      "productId": "69190094656a0c846005d86b",
+      "blueprintId": 540,
+      "name": "Framed Vertical Posters",
+      "variantCount": 21
+    }
+  ],
+  "createdAt": "2025-11-15T22:36:20.851Z"
+}
