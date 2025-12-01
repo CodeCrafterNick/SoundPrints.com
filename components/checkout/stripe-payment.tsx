@@ -15,10 +15,11 @@ const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
 
 interface CheckoutFormProps {
   amount: number
-  onSuccess: () => void
+  clientSecret: string
+  onSuccess: (paymentIntentId: string) => void
 }
 
-function CheckoutForm({ amount, onSuccess }: CheckoutFormProps) {
+function CheckoutForm({ amount, clientSecret, onSuccess }: CheckoutFormProps) {
   const stripe = useStripe()
   const elements = useElements()
   const [isProcessing, setIsProcessing] = useState(false)
@@ -35,7 +36,7 @@ function CheckoutForm({ amount, onSuccess }: CheckoutFormProps) {
     setErrorMessage(undefined)
 
     try {
-      const { error } = await stripe.confirmPayment({
+      const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
           return_url: `${window.location.origin}/order-confirmation`,
@@ -45,8 +46,8 @@ function CheckoutForm({ amount, onSuccess }: CheckoutFormProps) {
 
       if (error) {
         setErrorMessage(error.message)
-      } else {
-        onSuccess()
+      } else if (paymentIntent && paymentIntent.status === 'succeeded') {
+        onSuccess(paymentIntent.id)
       }
     } catch (err) {
       setErrorMessage('An unexpected error occurred')
@@ -86,7 +87,7 @@ function CheckoutForm({ amount, onSuccess }: CheckoutFormProps) {
 
 interface StripePaymentProps {
   amount: number
-  onSuccess: () => void
+  onSuccess: (paymentIntentId: string) => void
 }
 
 export function StripePayment({ amount, onSuccess }: StripePaymentProps) {
@@ -132,7 +133,7 @@ export function StripePayment({ amount, onSuccess }: StripePaymentProps) {
         },
       }}
     >
-      <CheckoutForm amount={amount} onSuccess={onSuccess} />
+      <CheckoutForm amount={amount} clientSecret={clientSecret} onSuccess={onSuccess} />
     </Elements>
   )
 }

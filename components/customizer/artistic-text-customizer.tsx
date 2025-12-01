@@ -235,7 +235,6 @@ export function ArtisticTextCustomizer() {
         
         {detectedWords.length > 0 && !showInput && (
           <div className="space-y-3">
-            {console.log('Rendering words section - detectedWords:', detectedWords.length, 'showInput:', showInput)}
             <div className="p-3 rounded-lg bg-muted">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-medium">Artistic Words ({detectedWords.length}):</p>

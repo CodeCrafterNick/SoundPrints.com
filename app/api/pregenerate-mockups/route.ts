@@ -61,6 +61,38 @@ export async function POST(req: NextRequest) {
     // Convert design to buffer
     const designBuffer = Buffer.from(await designFile.arrayBuffer())
 
+    // Validate design buffer has content (size > 1KB)
+    if (designBuffer.length < 1024) {
+      return NextResponse.json(
+        { error: 'Design file is too small or empty' },
+        { status: 400 }
+      )
+    }
+
+    // Validate it's a valid image using sharp
+    try {
+      const metadata = await require('sharp')(designBuffer).metadata()
+      if (!metadata.width || !metadata.height) {
+        throw new Error('Invalid image dimensions')
+      }
+      
+      // Check if image has any content (not completely transparent)
+      const stats = await require('sharp')(designBuffer).stats()
+      const hasContent = stats.channels.some((channel: any) => channel.mean > 0)
+      
+      if (!hasContent) {
+        return NextResponse.json(
+          { error: 'Design image appears to be empty or completely transparent' },
+          { status: 400 }
+        )
+      }
+    } catch (error) {
+      return NextResponse.json(
+        { error: 'Invalid or corrupted image file' },
+        { status: 400 }
+      )
+    }
+
     console.log(`[Pre-generate] Starting batch generation for category: ${category}`)
     const startTime = Date.now()
 

@@ -1,23 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { SiteHeader } from '@/components/site-header'
+import { SiteFooter } from '@/components/site-footer'
 import { CheckCircle, Home, Package, Loader2, Truck, AlertCircle } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 interface OrderDetails {
-  id: number
+  id: string
   status: string
-  recipient_name: string
-  recipient_email: string
+  email: string
   shipping_address: any
   items: any[]
-  cost_subtotal: number
-  cost_tax: number
-  cost_shipping: number
-  cost_total: number
+  subtotal: number
+  tax: number
+  shipping: number
+  total: number
   tracking_number?: string
   tracking_url?: string
   printful_order_id?: string
@@ -25,9 +26,9 @@ interface OrderDetails {
   updated_at: string
 }
 
-export default function OrderConfirmationPage() {
+function OrderConfirmationContent() {
   const searchParams = useSearchParams()
-  const orderId = searchParams.get('order_id')
+  const orderId = searchParams.get('orderId')
   const sessionId = searchParams.get('session_id')
   
   const [order, setOrder] = useState<OrderDetails | null>(null)
@@ -100,40 +101,50 @@ export default function OrderConfirmationPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-lg">Loading your order...</p>
-        </div>
+      <div className="min-h-screen flex flex-col">
+        <SiteHeader />
+        <main className="flex-1 bg-background flex items-center justify-center p-4">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
+            <p className="text-lg">Loading your order...</p>
+          </div>
+        </main>
+        <SiteFooter />
       </div>
     )
   }
 
   if (error || !order) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="text-center max-w-md">
-          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
-          <h1 className="text-2xl font-bold mb-2">Order Not Found</h1>
-          <p className="text-muted-foreground mb-6">
-            {error || 'We could not find your order. Please check your email for confirmation.'}
-          </p>
-          <Button asChild>
-            <Link href="/">Return Home</Link>
-          </Button>
-        </div>
+      <div className="min-h-screen flex flex-col">
+        <SiteHeader />
+        <main className="flex-1 bg-background flex items-center justify-center p-4">
+          <div className="text-center max-w-md">
+            <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
+            <h1 className="text-2xl font-bold mb-2">Order Not Found</h1>
+            <p className="text-muted-foreground mb-6">
+              {error || 'We could not find your order. Please check your email for confirmation.'}
+            </p>
+            <Button asChild>
+              <Link href="/">Return Home</Link>
+            </Button>
+          </div>
+        </main>
+        <SiteFooter />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5 }}
-        className="max-w-2xl w-full"
-      >
+    <div className="min-h-screen flex flex-col">
+      <SiteHeader />
+      <main className="flex-1 bg-background flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
+          className="max-w-2xl w-full"
+        >
         <div className="bg-card rounded-lg border p-8 md:p-12 text-center">
           <motion.div
             initial={{ scale: 0 }}
@@ -172,17 +183,31 @@ export default function OrderConfirmationPage() {
           )}
 
           <div className="bg-muted/50 rounded-lg p-6 mb-8 text-left">
-            <h3 className="font-semibold mb-4">Order Summary</h3>
-            <div className="space-y-3 mb-4">
+            <h3 className="font-semibold mb-4">Your Custom SoundPrint{order.items.length > 1 ? 's' : ''}</h3>
+            <div className="space-y-6 mb-4">
               {order.items.map((item: any, index: number) => (
-                <div key={index} className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">{item.productType} - {item.size}</p>
-                    {item.audioFileName && (
-                      <p className="text-xs text-muted-foreground">{item.audioFileName}</p>
-                    )}
+                <div key={index} className="space-y-3">
+                  {item.print_file_url && (
+                    <div className="rounded-lg overflow-hidden border bg-white dark:bg-gray-900">
+                      <img 
+                        src={item.print_file_url} 
+                        alt={`SoundPrint - ${item.audio_file_name}`}
+                        className="w-full h-auto"
+                      />
+                    </div>
+                  )}
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{item.product_type} - {item.size}</p>
+                      {item.audio_file_name && (
+                        <p className="text-xs text-muted-foreground">{item.audio_file_name}</p>
+                      )}
+                      {item.custom_text && (
+                        <p className="text-xs text-muted-foreground mt-1">Text: "{item.custom_text}"</p>
+                      )}
+                    </div>
+                    <p className="text-sm font-medium">${(item.price * item.quantity).toFixed(2)}</p>
                   </div>
-                  <p className="text-sm">${(item.price * item.quantity).toFixed(2)}</p>
                 </div>
               ))}
             </div>
@@ -190,19 +215,19 @@ export default function OrderConfirmationPage() {
             <div className="border-t pt-3 space-y-2">
               <div className="flex justify-between text-sm">
                 <span>Subtotal</span>
-                <span>${order.cost_subtotal.toFixed(2)}</span>
+                <span>${order.subtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span>Shipping</span>
-                <span>${order.cost_shipping.toFixed(2)}</span>
+                <span>${order.shipping.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span>Tax</span>
-                <span>${order.cost_tax.toFixed(2)}</span>
+                <span>${order.tax.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-base font-bold pt-2 border-t">
                 <span>Total</span>
-                <span>${order.cost_total.toFixed(2)}</span>
+                <span>${order.total.toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -214,7 +239,7 @@ export default function OrderConfirmationPage() {
                 <h3 className="font-semibold mb-2">What happens next?</h3>
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   <li>• We'll process your order and prepare your custom SoundPrint</li>
-                  <li>• You'll receive updates via email at {order.recipient_email}</li>
+                  <li>• You'll receive updates via email at {order.email}</li>
                   <li>• Your high-quality print will be shipped within 3-5 business days</li>
                   <li>• Delivery typically takes 5-7 business days</li>
                 </ul>
@@ -237,6 +262,27 @@ export default function OrderConfirmationPage() {
           </div>
         </div>
       </motion.div>
+    </main>
+    <SiteFooter />
     </div>
+  )
+}
+
+export default function OrderConfirmationPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex flex-col">
+        <SiteHeader />
+        <main className="flex-1 bg-background flex items-center justify-center p-4">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
+            <p className="text-lg">Loading your order...</p>
+          </div>
+        </main>
+        <SiteFooter />
+      </div>
+    }>
+      <OrderConfirmationContent />
+    </Suspense>
   )
 }

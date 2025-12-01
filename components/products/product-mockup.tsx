@@ -8,6 +8,8 @@ import QRCode from 'qrcode'
 
 interface ProductMockupProps {
   className?: string
+  canvasWidth?: number
+  canvasHeight?: number
 }
 
 export interface ProductMockupRef {
@@ -16,20 +18,42 @@ export interface ProductMockupRef {
 }
 
 export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
-  function ProductMockup({ className }, ref) {
+  function ProductMockup({ className, canvasWidth = 3600, canvasHeight = 4800 }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [canvasReady, setCanvasReady] = useState(false)
+  const [fontLoaded, setFontLoaded] = useState(false)
   const lastWaveformKey = useRef<string>('')
   const lastOverlayKey = useRef<string>('')
   const waveformImageData = useRef<ImageData | null>(null)
   
+  // Helper function to add opacity to color (handles hex and rgba)
+  const addOpacity = useCallback((color: string, opacity: string): string => {
+    // If already rgba, extract rgb and replace alpha
+    if (color.startsWith('rgba')) {
+      const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+      if (match) {
+        const alpha = parseInt(opacity, 16) / 255
+        return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${alpha})`
+      }
+    }
+    // If hex color, append opacity
+    if (color.startsWith('#')) {
+      return color + opacity
+    }
+    // Fallback: just append
+    return color + opacity
+  }, [])
+  
   // Function to generate print-ready file (transparent PNG with just artwork, no background)
   const getPrintFile = async (): Promise<string> => {
+    console.log('[getPrintFile] Starting print file generation...')
+    
     // Get fresh state values directly from store
     const state = useCustomizerStore.getState()
     const currentWaveformSize = state.waveformSize
+    const currentWaveformHeightMultiplier = state.waveformHeightMultiplier || 100
     const currentAudioUrl = state.audioUrl
     const currentSelectedSize = state.selectedSize
     const currentWaveformColor = state.waveformColor
@@ -57,6 +81,9 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     const currentShowQRCode = state.showQRCode
     const currentQrCodeUrl = state.qrCodeUrl
     const currentQrCodePosition = state.qrCodePosition
+    const currentQrCodeSize = state.qrCodeSize
+    const currentQrCodeX = state.qrCodeX
+    const currentQrCodeY = state.qrCodeY
     const currentDetectedWords = state.detectedWords
     const currentShowArtisticText = state.showArtisticText
     const currentArtisticTextStyle = state.artisticTextStyle
@@ -64,8 +91,12 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     const currentArtisticTextOpacity = state.artisticTextOpacity
     
     if (!currentAudioUrl) {
-      throw new Error('Audio not ready')
+      console.error('[getPrintFile] No audio URL available')
+      throw new Error('No audio loaded. Please upload an audio file first.')
     }
+    
+    console.log('[getPrintFile] Audio URL:', currentAudioUrl.substring(0, 50) + '...')
+    console.log('[getPrintFile] Selected size:', currentSelectedSize)
 
     // Create a high-res print canvas (300 DPI)
     const printCanvas = document.createElement('canvas')
@@ -160,6 +191,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     }
     
     function renderBackgroundFill() {
+      if (!printCtx) return
       if (currentBackgroundUseGradient) {
         let bgGradient
         if (currentBackgroundGradientDirection === 'radial') {
@@ -186,13 +218,26 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     }
     
     // Disable image smoothing for crisp edges
-    printCtx.imageSmoothingEnabled = false
+    if (printCtx) printCtx.imageSmoothingEnabled = false
     
     // Decode audio for waveform data
-    const response = await fetch(currentAudioUrl)
+    console.log('[getPrintFile] Fetching audio data...')
+    let response
+    try {
+      response = await fetch(currentAudioUrl)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`)
+      }
+    } catch (error) {
+      console.error('[getPrintFile] Failed to fetch audio:', error)
+      throw new Error('Failed to load audio file. Please try re-uploading the audio.')
+    }
+    
+    console.log('[getPrintFile] Decoding audio...')
     const arrayBuffer = await response.arrayBuffer()
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+    console.log('[getPrintFile] Audio decoded successfully, duration:', audioBuffer.duration)
     
     const rawData = audioBuffer.getChannelData(0)
     const sampleRate = audioBuffer.sampleRate
@@ -201,7 +246,11 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     let startSample = 0
     let endSample = rawData.length
     
-    if (currentSelectedRegion) {
+    // Check if we have a valid selection (not null, and end > start)
+    // Treat {start: 0, end: 0} as "no selection" since it means 0 samples
+    const hasValidSelection = currentSelectedRegion && currentSelectedRegion.end > currentSelectedRegion.start
+    
+    if (hasValidSelection) {
       startSample = Math.floor(currentSelectedRegion.start * sampleRate)
       endSample = Math.floor(currentSelectedRegion.end * sampleRate)
     }
@@ -209,16 +258,52 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     // Extract only the selected region
     const regionData = rawData.slice(startSample, endSample)
     
+    // Calculate max amplitude from ENTIRE audio file, not just the selected region
+    // This ensures bars are relative to the full audio's loudness
+    let globalMax = 0
+    for (let i = 0; i < rawData.length; i++) {
+      const abs = Math.abs(rawData[i])
+      if (abs > globalMax) globalMax = abs
+    }
+    
     // Calculate waveform dimensions
-    // Minimum margin is 1 inch = DPI pixels (300 for posters, 200 for shirts)
-    const dpi = currentSelectedSize.includes('oz') || currentSelectedSize.match(/\d+x\d+/) ? 300 : 200
-    const minMargin = dpi // 1 inch in pixels
+    // Scale margin proportionally with canvas size
+    const aspectRatio = printCanvas.width / printCanvas.height
+    
+    // Calculate margin as percentage of smallest dimension
+    let marginPercent = 0.08 // 8% default margin
+    if (aspectRatio > 1.5) {
+      // Wide formats (like 36x24, 24x18) - need more horizontal margin
+      marginPercent = 0.10
+    } else if (aspectRatio < 0.8) {
+      // Narrow formats (like 12x16) - need more vertical margin
+      marginPercent = 0.12
+    } else if (aspectRatio === 1) {
+      // Square format (12x12)
+      marginPercent = 0.09
+    }
+    
+    const minMargin = Math.min(printCanvas.width, printCanvas.height) * marginPercent
     const maxAvailableWidth = printCanvas.width - (minMargin * 2)
     const maxAvailableHeight = printCanvas.height - (minMargin * 2)
     
+    // Buffer percentage - small buffer to prevent waveform from touching absolute edges
+    const bufferPercent = 0.02 // 2% buffer on each side (reduced to allow edge-to-edge)
+    const bufferWidth = printCanvas.width * bufferPercent
+    const bufferHeight = printCanvas.height * bufferPercent
+    const maxAllowedWidth = printCanvas.width - (bufferWidth * 2)
+    const maxAllowedHeight = printCanvas.height - (bufferHeight * 2)
+    
     // Apply waveformSize percentage to available space
-    const waveformWidth = maxAvailableWidth * (currentWaveformSize / 100)
-    const waveformHeight = maxAvailableHeight * 0.7 * (currentWaveformSize / 100)
+    // Height is doubled to allow more vertical space (50% slider = 100% height)
+    const unclampedWaveformWidth = maxAvailableWidth * (currentWaveformSize / 100)
+    const unclamppedWaveformHeight = maxAvailableHeight * 0.7 * (currentWaveformSize / 100) * 2
+    
+    // Amplitude multiplier - makes bars "louder" (taller) without changing container
+    const amplitudeMultiplier = (currentWaveformHeightMultiplier || 100) / 100
+    // Clamp both width and height to prevent overflow, leaving buffer
+    const waveformWidth = Math.min(unclampedWaveformWidth, maxAllowedWidth)
+    const waveformHeight = Math.min(unclamppedWaveformHeight, maxAllowedHeight)
     const padding = (printCanvas.width - waveformWidth) / 2
     const waveformX = padding
     const waveformY = (printCanvas.height - waveformHeight) / 2
@@ -226,6 +311,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     const barWidth = Math.max(2, Math.floor(printCanvas.width / 600)) // Scale bar width with resolution
     const barGap = Math.max(1, Math.floor(barWidth / 3))
     const barTotalWidth = barWidth + barGap
+    // Calculate samples based on waveformWidth for proper proportional sizing
     const samples = Math.floor(waveformWidth / barTotalWidth)
     
     const blockSize = Math.max(1, Math.floor(regionData.length / samples))
@@ -245,12 +331,13 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       filteredData.push(count > 0 ? sum / count : 0)
     }
     
-    const max = Math.max(...filteredData)
-    const normalizedData = filteredData.map(n => n / max)
+    // Use global max from entire audio instead of just the filtered region
+    // Apply amplitude multiplier to make bars "louder" - clamp to 1.0 to prevent overflow
+    const normalizedData = filteredData.map(n => Math.min(1, (n / globalMax) * amplitudeMultiplier))
     
     // Create waveform color or gradient
     let waveformFillStyle: string | CanvasGradient
-    if (currentWaveformUseGradient) {
+    if (currentWaveformUseGradient && currentWaveformGradientStops && currentWaveformGradientStops.length >= 2) {
       let waveGradient
       if (currentWaveformGradientDirection === 'radial') {
         waveGradient = printCtx.createRadialGradient(
@@ -278,9 +365,9 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     // Render waveform based on style
     switch (currentWaveformStyle) {
       case 'bars':
-        // Default bars
+        // Default bars - scale positions to fit within waveformWidth
         for (let i = 0; i < normalizedData.length; i++) {
-          const x = waveformX + i * barTotalWidth
+          const x = waveformX + (i / normalizedData.length) * waveformWidth
           const barHeight = normalizedData[i] * waveformHeight
           const y = waveformY + (waveformHeight - barHeight) / 2
           
@@ -382,7 +469,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
           for (let layer = 0; layer < numLayers; layer++) {
             const layerOpacity = 0.3 + (layer / numLayers) * 0.7
             const layerHeight = waveformHeight * (0.4 + layer * 0.15)
-            const layerY = waveformY + waveformHeight - layerHeight
+            const layerY = waveformY + (waveformHeight - layerHeight) / 2
             
             printCtx.globalAlpha = layerOpacity
             printCtx.beginPath()
@@ -674,10 +761,248 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         }
         break
         
+      case 'mirror':
+        // Mirrored waveform (top and bottom) - PRINT
+        for (let i = 0; i < normalizedData.length; i++) {
+          const barHeight = (normalizedData[i] * waveformHeight) / 2
+          const x = waveformX + (i / normalizedData.length) * waveformWidth
+          const centerY = waveformY + waveformHeight / 2
+          
+          // Top half
+          printCtx.fillRect(x, centerY - barHeight, barWidth, barHeight)
+          // Bottom half
+          printCtx.fillRect(x, centerY, barWidth, barHeight)
+        }
+        break
+        
+      case 'dots':
+        // Dotted pattern - PRINT
+        for (let i = 0; i < normalizedData.length; i++) {
+          const barHeight = normalizedData[i] * waveformHeight
+          const x = waveformX + (i / normalizedData.length) * waveformWidth + barWidth / 2
+          const centerY = waveformY + waveformHeight / 2
+          const numDots = Math.max(3, Math.floor((barHeight / waveformHeight) * 15))
+          
+          for (let j = 0; j < numDots; j++) {
+            const dotY = centerY - (barHeight / 2) + (j * barHeight) / (numDots - 1)
+            printCtx.beginPath()
+            printCtx.arc(x, dotY, 5, 0, Math.PI * 2)
+            printCtx.fill()
+          }
+        }
+        break
+        
+      case 'circular':
+        // Circular visualization - PRINT
+        const printCenterX = printCanvas.width / 2
+        const printCenterY = printCanvas.height / 2
+        const printRadius = Math.min(waveformWidth, waveformHeight) * 0.35
+        
+        printCtx.lineWidth = 12
+        printCtx.strokeStyle = waveformFillStyle // Support gradient
+        
+        for (let i = 0; i < normalizedData.length; i++) {
+          const angle = (i / normalizedData.length) * Math.PI * 2 - Math.PI / 2
+          const amplitude = normalizedData[i] * printRadius * 1.2
+          const innerRadius = printRadius - amplitude / 2
+          const outerRadius = printRadius + amplitude / 2
+          
+          const x1 = printCenterX + Math.cos(angle) * innerRadius
+          const y1 = printCenterY + Math.sin(angle) * innerRadius
+          const x2 = printCenterX + Math.cos(angle) * outerRadius
+          const y2 = printCenterY + Math.sin(angle) * outerRadius
+          
+          printCtx.beginPath()
+          printCtx.moveTo(x1, y1)
+          printCtx.lineTo(x2, y2)
+          printCtx.stroke()
+        }
+        break
+        
+      case 'radial':
+        // Radial burst effect - PRINT
+        const radialCenterX = printCanvas.width / 2
+        const radialCenterY = printCanvas.height / 2
+        const maxRadius = Math.min(waveformWidth, waveformHeight) * 0.65
+        
+        printCtx.lineWidth = 8
+        printCtx.lineCap = 'round'
+        
+        for (let i = 0; i < normalizedData.length; i++) {
+          const angle = (i / normalizedData.length) * Math.PI * 2
+          const length = normalizedData[i] * maxRadius
+          
+          const x1 = radialCenterX
+          const y1 = radialCenterY
+          const x2 = radialCenterX + Math.cos(angle) * length
+          const y2 = radialCenterY + Math.sin(angle) * length
+          
+          printCtx.strokeStyle = waveformFillStyle
+          printCtx.beginPath()
+          printCtx.moveTo(x1, y1)
+          printCtx.lineTo(x2, y2)
+          printCtx.stroke()
+        }
+        break
+        
+      case 'frequency':
+        // Frequency spectrum bars - PRINT
+        if (normalizedData.length > 0) {
+          const freqBarWidth = waveformWidth / normalizedData.length
+          const freqMaxHeight = waveformHeight * 0.8
+          
+          for (let i = 0; i < normalizedData.length; i++) {
+            const barHeight = normalizedData[i] * freqMaxHeight
+            const x = waveformX + i * freqBarWidth
+            const y = waveformY + (waveformHeight - barHeight) / 2
+            
+            if (!isFinite(x) || !isFinite(y) || !isFinite(barHeight)) continue
+            
+            // Gradient for each bar
+            const gradient = printCtx.createLinearGradient(x, y + barHeight, x, y)
+            gradient.addColorStop(0, addOpacity(currentWaveformColor, '40'))
+            gradient.addColorStop(1, currentWaveformColor)
+            
+            printCtx.fillStyle = gradient
+            printCtx.fillRect(x, y, freqBarWidth * 0.8, barHeight)
+          }
+        }
+        break
+        
+      case 'galaxy':
+        // Cosmic galaxy effect - PRINT
+        if (normalizedData.length > 0) {
+          const galaxyCenterX = printCanvas.width / 2
+          const galaxyCenterY = printCanvas.height / 2
+          const galaxyRadius = Math.min(waveformWidth, waveformHeight) * 0.35
+          
+          for (let i = 0; i < normalizedData.length; i++) {
+            const angle = (i / normalizedData.length) * Math.PI * 2
+            const distance = galaxyRadius * (0.5 + normalizedData[i] * 0.5)
+            
+            const swirl = (i / normalizedData.length) * Math.PI * 4
+            const x = galaxyCenterX + Math.cos(angle + swirl * 0.3) * distance
+            const y = galaxyCenterY + Math.sin(angle + swirl * 0.3) * distance
+            
+            const size = 4 + normalizedData[i] * 8
+            const opacity = 0.3 + normalizedData[i] * 0.7
+            
+            printCtx.fillStyle = currentWaveformColor + Math.floor(opacity * 255).toString(16).padStart(2, '0')
+            printCtx.beginPath()
+            printCtx.arc(x, y, size, 0, Math.PI * 2)
+            printCtx.fill()
+            
+            printCtx.shadowBlur = 20
+            printCtx.shadowColor = currentWaveformColor
+            printCtx.fill()
+            printCtx.shadowBlur = 0
+          }
+        }
+        break
+        
+      case 'particle':
+        // Particle cloud - PRINT
+        if (normalizedData.length > 0) {
+          const particleCenterX = printCanvas.width / 2
+          const particleCenterY = printCanvas.height / 2
+          const particleSpread = Math.min(waveformWidth, waveformHeight) * 0.4
+          
+          for (let i = 0; i < normalizedData.length; i++) {
+            const angle = (i / normalizedData.length) * Math.PI * 2
+            const distance = (Math.random() * 0.5 + 0.5) * particleSpread * normalizedData[i]
+            
+            const x = particleCenterX + Math.cos(angle) * distance
+            const y = particleCenterY + Math.sin(angle) * distance
+            
+            const size = 2 + normalizedData[i] * 10
+            const opacity = 0.4 + normalizedData[i] * 0.6
+            
+            printCtx.fillStyle = currentWaveformColor + Math.floor(opacity * 255).toString(16).padStart(2, '0')
+            printCtx.beginPath()
+            printCtx.arc(x, y, size, 0, Math.PI * 2)
+            printCtx.fill()
+          }
+        }
+        break
+        
+      case 'ripple':
+        // Water ripple effect - PRINT
+        if (normalizedData.length > 0) {
+          const rippleCenterX = printCanvas.width / 2
+          const rippleCenterY = printCanvas.height / 2
+          const maxRippleRadius = Math.min(waveformWidth, waveformHeight) * 0.45
+          const numRipples = 8
+          
+          printCtx.strokeStyle = waveformFillStyle
+          printCtx.lineWidth = 4
+          
+          for (let r = 0; r < numRipples; r++) {
+            printCtx.globalAlpha = 0.6 - (r / numRipples) * 0.4
+            printCtx.beginPath()
+            
+            for (let i = 0; i < normalizedData.length; i++) {
+              const angle = (i / normalizedData.length) * Math.PI * 2
+              const baseRadius = (r / numRipples) * maxRippleRadius
+              const rippleEffect = normalizedData[i] * 30
+              const radius = baseRadius + rippleEffect
+              
+              const x = rippleCenterX + Math.cos(angle) * radius
+              const y = rippleCenterY + Math.sin(angle) * radius
+              
+              if (i === 0) printCtx.moveTo(x, y)
+              else printCtx.lineTo(x, y)
+            }
+            
+            printCtx.closePath()
+            printCtx.stroke()
+          }
+          printCtx.globalAlpha = 1
+        }
+        break
+        
+      case 'wave':
+        // Sine wave style - PRINT
+        if (normalizedData.length > 1) {
+          const waveCenterY = waveformY + waveformHeight / 2
+          
+          printCtx.strokeStyle = waveformFillStyle
+          printCtx.lineWidth = 6
+          printCtx.lineCap = 'round'
+          printCtx.lineJoin = 'round'
+          
+          printCtx.beginPath()
+          
+          for (let i = 0; i < normalizedData.length; i++) {
+            const x = waveformX + (i / normalizedData.length) * waveformWidth
+            const y = waveCenterY + (normalizedData[i] - 0.5) * waveformHeight
+            
+            if (i === 0) printCtx.moveTo(x, y)
+            else printCtx.lineTo(x, y)
+          }
+          
+          printCtx.stroke()
+        }
+        break
+        
+      case 'glow':
+        // Glowing bars with blur - PRINT
+        for (let i = 0; i < normalizedData.length; i++) {
+          const x = waveformX + (i / normalizedData.length) * waveformWidth
+          const barHeight = normalizedData[i] * waveformHeight
+          const y = waveformY + (waveformHeight - barHeight) / 2
+          
+          printCtx.shadowBlur = 30
+          printCtx.shadowColor = currentWaveformColor
+          printCtx.fillStyle = waveformFillStyle
+          printCtx.fillRect(x, y, barWidth, barHeight)
+        }
+        printCtx.shadowBlur = 0
+        break
+        
       default:
         // Fallback to bars
         for (let i = 0; i < normalizedData.length; i++) {
-          const x = waveformX + i * barTotalWidth
+          const x = waveformX + (i / normalizedData.length) * waveformWidth
           const barHeight = normalizedData[i] * waveformHeight
           const y = waveformY + (waveformHeight - barHeight) / 2
           
@@ -702,12 +1027,13 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     // Add QR code if enabled
     if (currentShowQRCode && currentQrCodeUrl) {
       try {
-        const qrSize = Math.floor(printCanvas.width * 0.15) // 15% of canvas width
+        // Use customizable size (percentage of canvas width)
+        const qrSize = Math.floor(printCanvas.width * (currentQrCodeSize / 100))
         const qrDataUrl = await QRCode.toDataURL(currentQrCodeUrl, {
           width: qrSize,
           margin: 1,
           color: {
-            dark: currentTextColor,
+            dark: currentWaveformColor, // Use waveform color instead of text color
             light: '#00000000' // Transparent background
           }
         })
@@ -719,28 +1045,10 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
           qrImage.src = qrDataUrl
         })
         
-        let qrX, qrY
-        const qrPadding = padding / 2
-        
-        switch (currentQrCodePosition) {
-          case 'top-left':
-            qrX = qrPadding
-            qrY = qrPadding
-            break
-          case 'top-right':
-            qrX = printCanvas.width - qrSize - qrPadding
-            qrY = qrPadding
-            break
-          case 'bottom-left':
-            qrX = qrPadding
-            qrY = printCanvas.height - qrSize - qrPadding
-            break
-          case 'bottom-right':
-          default:
-            qrX = printCanvas.width - qrSize - qrPadding
-            qrY = printCanvas.height - qrSize - qrPadding
-            break
-        }
+        // Use custom X/Y position (percentages)
+        // Position is center-based, so we offset by half the QR size
+        const qrX = (currentQrCodeX / 100) * printCanvas.width - qrSize / 2
+        const qrY = (currentQrCodeY / 100) * printCanvas.height - qrSize / 2
         
         printCtx.drawImage(qrImage, qrX, qrY, qrSize, qrSize)
       } catch (error) {
@@ -748,14 +1056,20 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       }
     }
     
-    return printCanvas.toDataURL('image/png')
+    console.log('[getPrintFile] Generating PNG data URL...')
+    const dataUrl = printCanvas.toDataURL('image/png')
+    console.log('[getPrintFile] PNG generated, length:', dataUrl.length)
+    return dataUrl
   }
   
   // Expose canvas ref and print function to parent
+  // Use a getter pattern so the canvas is always current
   useImperativeHandle(ref, () => ({
-    canvas: canvasRef.current,
+    get canvas() {
+      return canvasRef.current
+    },
     getPrintFile
-  }))
+  }), [getPrintFile])
   
   const audioUrl = useCustomizerStore((state) => state.audioUrl)
   const waveformColor = useCustomizerStore((state) => state.waveformColor)
@@ -770,7 +1084,8 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
   const selectedSize = useCustomizerStore((state) => state.selectedSize)
   const selectedRegion = useCustomizerStore((state) => state.selectedRegion)
   const waveformStyle = useCustomizerStore((state) => state.waveformStyle)
-  const waveformSize = useCustomizerStore((state) => state.waveformSize)
+  const waveformSize = useCustomizerStore((state) => state.waveformSize) || 50
+  const waveformHeightMultiplier = useCustomizerStore((state) => state.waveformHeightMultiplier) || 100
   const showText = useCustomizerStore((state) => state.showText)
   const songTitle = useCustomizerStore((state) => state.songTitle)
   const artistName = useCustomizerStore((state) => state.artistName)
@@ -790,6 +1105,9 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
   const showQRCode = useCustomizerStore((state) => state.showQRCode)
   const qrCodeUrl = useCustomizerStore((state) => state.qrCodeUrl)
   const qrCodePosition = useCustomizerStore((state) => state.qrCodePosition)
+  const qrCodeSize = useCustomizerStore((state) => state.qrCodeSize) || 8
+  const qrCodeX = useCustomizerStore((state) => state.qrCodeX) || 85
+  const qrCodeY = useCustomizerStore((state) => state.qrCodeY) || 85
   const detectedWords = useCustomizerStore((state) => state.detectedWords)
   const showArtisticText = useCustomizerStore((state) => state.showArtisticText)
   const artisticTextStyle = useCustomizerStore((state) => state.artisticTextStyle)
@@ -798,6 +1116,9 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
 
   // Load Google Font for canvas rendering
   useEffect(() => {
+    // Reset fontLoaded to false when font changes to trigger re-render after loading
+    setFontLoaded(false)
+    
     if (fontFamily && fontFamily !== 'Arial' && fontFamily !== 'sans-serif') {
       const fontLinkId = `font-${fontFamily.replace(/\s+/g, '-')}`
       
@@ -809,17 +1130,38 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         document.head.appendChild(link)
       }
       
-      // Wait for the SPECIFIC font to load
+      // Wait for the SPECIFIC font to load with a timeout fallback
       if (document.fonts) {
-        // Use document.fonts.load() to explicitly load this font
         const fontSpec = `400 16px "${fontFamily}"`
         console.log('🔤 Loading font:', fontSpec)
-        document.fonts.load(fontSpec).then(() => {
-          console.log('✅ Font loaded:', fontFamily)
-        }).catch((error) => {
-          console.error('❌ Font load failed:', fontFamily, error)
-        })
+        
+        // Use Promise.race to add a timeout
+        const loadPromise = document.fonts.load(fontSpec)
+        const timeoutPromise = new Promise<void>((resolve) => setTimeout(() => resolve(), 2000))
+        
+        Promise.race([loadPromise, timeoutPromise])
+          .then(() => {
+            // Double-check font is actually ready by checking document.fonts.check
+            const checkFont = () => {
+              if (document.fonts.check(fontSpec)) {
+                console.log('✅ Font verified ready:', fontFamily)
+                setFontLoaded(true)
+              } else {
+                // Font not ready yet, try again in 50ms
+                setTimeout(checkFont, 50)
+              }
+            }
+            checkFont()
+          })
+          .catch((error) => {
+            console.error('❌ Font load failed:', fontFamily, error)
+            setFontLoaded(true) // Still mark as loaded to prevent blocking
+          })
+      } else {
+        setFontLoaded(true)
       }
+    } else {
+      setFontLoaded(true) // Standard fonts are always available
     }
   }, [fontFamily])
 
@@ -832,7 +1174,13 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
   }) // No dependency array - runs after every render, but only sets state once
 
   useEffect(() => {
-    console.log('🎨🎨🎨 MAIN USEEFFECT TRIGGERED - textX:', textX, 'textY:', textY)
+    console.log('🎨🎨🎨 MAIN USEEFFECT TRIGGERED')
+    console.log('🎨 GRADIENT STATE at useEffect entry:', { 
+      waveformUseGradient,
+      waveformGradientStopsLength: waveformGradientStops?.length,
+      waveformGradientDirection,
+      backgroundUseGradient
+    })
     console.log('ProductMockup render:', { 
       audioUrl: !!audioUrl, 
       canvasReady, 
@@ -843,56 +1191,38 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       textY,
       fontSize,
       fontFamily,
+      fontLoaded,
       textColor
     })
+    
+    // Don't render until font is loaded - this ensures we wait for first font load
+    if (!fontLoaded && fontFamily !== 'Arial' && fontFamily !== 'sans-serif') {
+      console.log('⏳ Waiting for font to load:', fontFamily)
+      return
+    }
+    
     if (!canvasRef.current) return
 
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     
-    // Helper function to add opacity to color (handles hex and rgba)
-    const addOpacity = (color: string, opacity: string): string => {
-      // If already rgba, extract rgb and replace alpha
-      if (color.startsWith('rgba')) {
-        const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
-        if (match) {
-          const alpha = parseInt(opacity, 16) / 255
-          return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${alpha})`
-        }
-      }
-      // If hex color, append opacity
-      if (color.startsWith('#')) {
-        return color + opacity
-      }
-      // Fallback: just append
-      return color + opacity
-    }
+    // Track if this render is still valid
+    let isCancelled = false
     
     // Make the effect async to handle QR code rendering
     const renderCanvas = async () => {
     
+    console.log('🖼️ renderCanvas called, waveformUseGradient=', waveformUseGradient)
+    
     // Disable image smoothing for sharper rendering
     ctx.imageSmoothingEnabled = false
     
-    // Set canvas size
-    const sizes: Record<string, { width: number; height: number }> = {
-      '12x16': { width: 900, height: 1200 },
-      '18x24': { width: 900, height: 1200 },
-      '24x36': { width: 900, height: 1350 },
-      'S': { width: 800, height: 900 },
-      'M': { width: 800, height: 900 },
-      'L': { width: 800, height: 900 },
-      'XL': { width: 800, height: 900 },
-      'XXL': { width: 800, height: 900 },
-      '11oz': { width: 700, height: 700 },
-      '15oz': { width: 700, height: 700 },
-      '16x20': { width: 900, height: 1125 },
-      '20x24': { width: 900, height: 1080 },
-    }
-    const size = sizes[selectedSize] || { width: 600, height: 800 }
-    canvas.width = size.width
-    canvas.height = size.height
+    // Determine if this is effectively a "full audio" selection
+    // Round to 2 decimal places to avoid floating point issues
+    const regionStart = selectedRegion?.start ? Math.round(selectedRegion.start * 100) / 100 : 0
+    const audioDur = useCustomizerStore.getState().audioDuration
+    const isFullAudio = !selectedRegion || (regionStart === 0 && selectedRegion.end >= audioDur - 0.1)
     
     // Create a key for ONLY waveform properties (audio data and waveform styling)
     const waveformKey = JSON.stringify({
@@ -903,6 +1233,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       waveformGradientDirection,
       waveformStyle,
       waveformSize,
+      waveformHeightMultiplier,
       backgroundColor,
       backgroundUseGradient,
       backgroundGradientStops,
@@ -912,7 +1243,10 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       backgroundFocalPoint,
       selectedProduct,
       selectedSize,
-      selectedRegion,
+      // Use stable region representation - treat full audio the same whether null or explicit
+      regionKey: isFullAudio ? 'full' : `${regionStart}-${Math.round((selectedRegion?.end || 0) * 100) / 100}`,
+      canvasWidth,
+      canvasHeight,
     })
     
     // Create a key for text/overlay properties (everything that goes on top of waveform)
@@ -929,13 +1263,25 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       textY,
       showQRCode,
       qrCodeUrl,
-      qrCodePosition
+      qrCodePosition,
+      qrCodeSize,
+      qrCodeX,
+      qrCodeY
     })
     
     // Detect what changed
     const waveformChanged = waveformKey !== lastWaveformKey.current
     const overlayChanged = overlayKey !== lastOverlayKey.current
     const canUseCache = !!waveformImageData.current
+    
+    console.log('🔄 MAIN RENDER CHECK:', {
+      waveformUseGradient,
+      waveformGradientDirection,
+      waveformGradientStopsCount: waveformGradientStops?.length,
+      waveformChanged,
+      overlayChanged,
+      canUseCache,
+    })
     
     if (overlayChanged) {
       console.log('📝 Overlay properties changed:', {
@@ -962,12 +1308,22 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       lastOverlayKey.current = overlayKey
       
       // Restore the cached waveform canvas
-      ctx.putImageData(waveformImageData.current, 0, 0)
-      console.log('✅ Restored waveform from cache')
+      if (waveformImageData.current) {
+        ctx.putImageData(waveformImageData.current, 0, 0)
+        console.log('✅ Restored waveform from cache')
+      }
       
       // Render text overlay
       const state = useCustomizerStore.getState()
       if (state.showText && state.customText) {
+        // Wait for font to be ready before rendering
+        const fontSpec = `${state.fontSize}px "${state.fontFamily}"`
+        if (document.fonts && state.fontFamily !== 'Arial' && state.fontFamily !== 'sans-serif') {
+          await document.fonts.load(fontSpec).catch(() => {
+            console.warn('Font load failed in overlay path, using fallback')
+          })
+        }
+        
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
         ctx.font = `${state.fontSize}px "${state.fontFamily}", sans-serif`
@@ -1008,27 +1364,46 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         ctx.fillText(state.customText, textXPos, textYPos)
       }
       
-      // Render QR overlay - synchronous rendering
+      // Render QR overlay - await to prevent duplicates when position changes quickly
       if (state.showQRCode && state.qrCodeUrl) {
-        QRCode.toDataURL(state.qrCodeUrl, { width: 150, margin: 1 })
-          .then(qrDataUrl => {
-            const qrImg = new Image()
-            qrImg.onload = () => {
-              const qrSize = 150
-              const margin = canvas.width * 0.05
-              let qrX, qrY
-              switch (state.qrCodePosition) {
-                case 'top-left': qrX = margin; qrY = margin; break
-                case 'top-right': qrX = canvas.width - qrSize - margin; qrY = margin; break
-                case 'bottom-left': qrX = margin; qrY = canvas.height - qrSize - margin; break
-                case 'bottom-right':
-                default: qrX = canvas.width - qrSize - margin; qrY = canvas.height - qrSize - margin; break
-              }
-              ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
+        try {
+          const qrSizePercent = state.qrCodeSize || 8
+          const qrSize = Math.floor(canvas.width * (qrSizePercent / 100))
+          const qrDataUrl = await QRCode.toDataURL(state.qrCodeUrl, { 
+            width: qrSize, 
+            margin: 1,
+            color: {
+              dark: state.waveformColor,
+              light: '#00000000'
             }
+          })
+          
+          // Check if render was cancelled before drawing
+          if (isCancelled) {
+            console.log('🚫 QR render cancelled')
+            return
+          }
+          
+          const qrImg = new Image()
+          await new Promise<void>((resolve, reject) => {
+            qrImg.onload = () => {
+              // Check again before drawing in case cancelled during load
+              if (isCancelled) {
+                resolve()
+                return
+              }
+              // Use custom X/Y position
+              const qrX = ((state.qrCodeX || 92) / 100) * canvas.width - qrSize / 2
+              const qrY = ((state.qrCodeY || 92) / 100) * canvas.height - qrSize / 2
+              ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
+              resolve()
+            }
+            qrImg.onerror = reject
             qrImg.src = qrDataUrl
           })
-          .catch(error => console.error('QR code rendering error:', error))
+        } catch (error) {
+          console.error('QR code rendering error:', error)
+        }
       }
       console.log('✨ OVERLAY FAST PATH complete')
       return
@@ -1040,12 +1415,15 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       return
     }
     
-    // Full regeneration needed - draw background
+    // Full regeneration needed - set canvas dimensions (this clears the canvas)
     console.log('🔄 Full regeneration: waveform properties changed')
+    canvas.width = canvasWidth
+    canvas.height = canvasHeight
+    
     lastWaveformKey.current = waveformKey
     lastOverlayKey.current = overlayKey
     
-    // CRITICAL: Clear the entire canvas first to force browser repaint
+    // Draw background
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     
     if (backgroundUseGradient) {
@@ -1175,6 +1553,12 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         return backgroundPromise.then(() => audioBuffer)
       })
       .then(async (audioBuffer) => {
+        // Check if render was cancelled
+        if (isCancelled) {
+          console.log('Render cancelled before waveform generation')
+          return
+        }
+        
         const rawData = audioBuffer.getChannelData(0)
         const sampleRate = audioBuffer.sampleRate
         
@@ -1182,35 +1566,79 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         let startSample = 0
         let endSample = rawData.length
         
-        if (selectedRegion) {
+        // Check if we have a valid selection (not null, and end > start)
+        // Treat {start: 0, end: 0} as "no selection" since it means 0 samples
+        const hasValidSelection = selectedRegion && selectedRegion.end > selectedRegion.start
+        
+        if (hasValidSelection) {
           startSample = Math.floor(selectedRegion.start * sampleRate)
           endSample = Math.floor(selectedRegion.end * sampleRate)
-          console.log('Using selected region:', { start: selectedRegion.start, end: selectedRegion.end, startSample, endSample })
+          console.log('📍 Using selected region:', { start: selectedRegion.start, end: selectedRegion.end, startSample, endSample })
+        } else {
+          console.log('📍 No valid selection - using entire audio:', { startSample: 0, endSample: rawData.length, totalSamples: rawData.length, selectedRegion })
         }
         
         // Extract only the selected region
         const regionData = rawData.slice(startSample, endSample)
+        console.log('📊 Region data length:', regionData.length, 'samples')
+        
+        // Calculate max amplitude from ENTIRE audio file, not just the selected region
+        // This ensures bars are relative to the full audio's loudness
+        let globalMax = 0
+        for (let i = 0; i < rawData.length; i++) {
+          const abs = Math.abs(rawData[i])
+          if (abs > globalMax) globalMax = abs
+        }
         
         // Calculate waveform dimensions based on canvas size
-        // Simulate 1 inch margin at print resolution (scaled to preview)
-        // Assuming ~18-24 inch prints shown at 900-1200px = roughly 50-65 px/inch on screen
-        const approxPPI = 60 // approximate pixels per inch on preview
-        const minMargin = approxPPI // 1 inch minimum margin
+        // Scale margin proportionally with canvas size (canvas is at 300 DPI: width in inches = pixels / 300)
+        // Use 5-10% margin depending on canvas dimensions
+        const aspectRatio = canvas.width / canvas.height
+        
+        // Calculate margin as percentage of smallest dimension
+        let marginPercent = 0.08 // 8% default margin
+        if (aspectRatio > 1.5) {
+          // Wide formats (like 36x24, 24x18) - need more horizontal margin
+          marginPercent = 0.10
+        } else if (aspectRatio < 0.8) {
+          // Narrow formats (like 12x16) - need more vertical margin
+          marginPercent = 0.12
+        } else if (aspectRatio === 1) {
+          // Square format (12x12)
+          marginPercent = 0.09
+        }
+        
+        const minMargin = Math.min(canvas.width, canvas.height) * marginPercent
         const maxAvailableWidth = canvas.width - (minMargin * 2)
         const maxAvailableHeight = canvas.height - (minMargin * 2)
         
+        // Buffer percentage - small buffer to prevent waveform from touching absolute edges
+        const bufferPercent = 0.02 // 2% buffer on each side (reduced to allow edge-to-edge)
+        const bufferWidth = canvas.width * bufferPercent
+        const bufferHeight = canvas.height * bufferPercent
+        const maxAllowedWidth = canvas.width - (bufferWidth * 2)
+        const maxAllowedHeight = canvas.height - (bufferHeight * 2)
+        
         // Apply waveformSize percentage to available space
-        const waveformWidth = maxAvailableWidth * (waveformSize / 100)
-        const waveformHeight = maxAvailableHeight * 0.7 * (waveformSize / 100)
+        // Height is doubled to allow more vertical space (50% slider = 100% height)
+        const unclampedWaveformWidth = maxAvailableWidth * (waveformSize / 100)
+        const unclamppedWaveformHeight = maxAvailableHeight * 0.7 * (waveformSize / 100) * 2
+        
+        // Amplitude multiplier - makes bars "louder" (taller) without changing container
+        const amplitudeMultiplier = (waveformHeightMultiplier || 100) / 100
+        // Clamp both width and height to prevent overflow, leaving buffer
+        const waveformWidth = Math.min(unclampedWaveformWidth, maxAllowedWidth)
+        const waveformHeight = Math.min(unclamppedWaveformHeight, maxAllowedHeight)
         const padding = (canvas.width - waveformWidth) / 2
         const waveformX = padding
         const waveformY = (canvas.height - waveformHeight) / 2
         
-        console.log('📐 Waveform dimensions:', { waveformSize, waveformWidth, waveformHeight, canvasWidth: canvas.width, canvasHeight: canvas.height })
+        console.log('📐 Waveform dimensions:', { waveformSize, waveformWidth, waveformHeight, unclamped: unclamppedWaveformHeight, maxAllowed: maxAllowedHeight, canvasWidth: canvas.width, canvasHeight: canvas.height })
         
         const barWidth = 6
         const barGap = 1
         const barTotalWidth = barWidth + barGap
+        // Calculate samples based on waveformWidth for proper proportional sizing
         const samples = Math.floor(waveformWidth / barTotalWidth)
         
         console.log('📊 Waveform bars:', { samples, barWidth, barGap, totalBars: samples })
@@ -1233,44 +1661,67 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
           filteredData.push(count > 0 ? sum / count : 0)
         }
         
-        const max = Math.max(...filteredData)
-        const normalizedData = filteredData.map(n => n / max)
+        // Use global max from entire audio instead of just the filtered region
+        // Apply amplitude multiplier to make bars "louder" - clamp to 1.0 to prevent overflow
+        const normalizedData = filteredData.map(n => Math.min(1, (n / globalMax) * amplitudeMultiplier))
         
         // Create waveform color or gradient
         let waveformFillStyle: string | CanvasGradient
-        if (waveformUseGradient) {
+        console.log('🎨 Waveform gradient settings:', { 
+          waveformUseGradient, 
+          waveformGradientDirection,
+          waveformGradientStops,
+          waveformColor,
+          waveformX,
+          waveformY,
+          waveformWidth,
+          waveformHeight
+        })
+        if (waveformUseGradient && waveformGradientStops && waveformGradientStops.length >= 2) {
+          console.log('🌈 Creating waveform gradient...')
           let waveGradient
           if (waveformGradientDirection === 'radial') {
+            console.log('🌈 Creating RADIAL gradient')
             waveGradient = ctx.createRadialGradient(
               canvas.width / 2, canvas.height / 2, 0,
               canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2
             )
           } else if (waveformGradientDirection === 'horizontal') {
+            console.log('🌈 Creating HORIZONTAL gradient from', waveformX, 'to', waveformX + waveformWidth)
             waveGradient = ctx.createLinearGradient(waveformX, 0, waveformX + waveformWidth, 0)
           } else if (waveformGradientDirection === 'vertical') {
+            console.log('🌈 Creating VERTICAL gradient from', waveformY, 'to', waveformY + waveformHeight)
             waveGradient = ctx.createLinearGradient(0, waveformY, 0, waveformY + waveformHeight)
           } else { // diagonal
+            console.log('🌈 Creating DIAGONAL gradient')
             waveGradient = ctx.createLinearGradient(waveformX, waveformY, waveformX + waveformWidth, waveformY + waveformHeight)
           }
           // Add all gradient stops
           const sortedStops = [...waveformGradientStops].sort((a, b) => a.position - b.position)
+          console.log('🌈 Adding gradient stops:', sortedStops)
           sortedStops.forEach(stop => {
+            console.log('  Adding stop:', stop.position, stop.color)
             waveGradient.addColorStop(stop.position, stop.color)
           })
           waveformFillStyle = waveGradient
+          console.log('✅ Waveform gradient created successfully')
         } else {
+          console.log('⚪ Using solid waveform color:', waveformColor)
           waveformFillStyle = waveformColor
         }
         
+        console.log('🎯 Setting ctx.fillStyle to:', typeof waveformFillStyle === 'string' ? waveformFillStyle : 'CanvasGradient')
+        
         ctx.fillStyle = waveformFillStyle
+        ctx.strokeStyle = waveformFillStyle // Also set strokeStyle for stroke-based styles
         
         // Render based on selected style
         switch (waveformStyle) {
           case 'bars':
-            // Classic vertical bars
+            // Classic vertical bars - scale positions to fit within waveformWidth
             for (let i = 0; i < normalizedData.length; i++) {
               const barHeight = normalizedData[i] * waveformHeight
-              const x = Math.round(waveformX + i * (barWidth + barGap))
+              const x = Math.round(waveformX + (i / normalizedData.length) * waveformWidth)
               const y = Math.round(waveformY + (waveformHeight - barHeight) / 2)
               
               ctx.beginPath()
@@ -1283,7 +1734,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
             // Mirrored waveform (top and bottom)
             for (let i = 0; i < normalizedData.length; i++) {
               const barHeight = (normalizedData[i] * waveformHeight) / 2
-              const x = Math.round(waveformX + i * (barWidth + barGap))
+              const x = Math.round(waveformX + (i / normalizedData.length) * waveformWidth)
               const centerY = Math.round(waveformY + waveformHeight / 2)
               
               // Top half
@@ -1302,7 +1753,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
             // Dotted pattern
             for (let i = 0; i < normalizedData.length; i++) {
               const barHeight = normalizedData[i] * waveformHeight
-              const x = Math.round(waveformX + i * (barWidth + barGap) + barWidth / 2)
+              const x = Math.round(waveformX + (i / normalizedData.length) * waveformWidth + barWidth / 2)
               const centerY = Math.round(waveformY + waveformHeight / 2)
               const numDots = Math.max(3, Math.floor((barHeight / waveformHeight) * 15))
               
@@ -1316,18 +1767,21 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
             break
             
           case 'circular':
-            // Circular visualization
+            // Circular visualization with independent width/height control
             const centerX = canvas.width / 2
             const centerY = canvas.height / 2
-            const radius = Math.min(waveformWidth, waveformHeight) * 0.35
+            // Use width for base radius, height for amplitude scaling
+            const baseRadius = waveformWidth * 0.35
+            const heightScale = (waveformHeight / waveformWidth) * ((waveformHeightMultiplier || 100) / 100)
             
-            ctx.lineWidth = 3
+            ctx.lineWidth = 12
+            ctx.strokeStyle = waveformFillStyle // Support gradient
             
             for (let i = 0; i < normalizedData.length; i++) {
               const angle = (i / normalizedData.length) * Math.PI * 2 - Math.PI / 2
-              const amplitude = normalizedData[i] * radius * 0.4
-              const innerRadius = radius - amplitude / 2
-              const outerRadius = radius + amplitude / 2
+              const amplitude = normalizedData[i] * baseRadius * 1.2 * heightScale
+              const innerRadius = baseRadius - amplitude / 2
+              const outerRadius = baseRadius + amplitude / 2
               
               const x1 = centerX + Math.cos(angle) * innerRadius
               const y1 = centerY + Math.sin(angle) * innerRadius
@@ -1337,7 +1791,6 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
               ctx.beginPath()
               ctx.moveTo(x1, y1)
               ctx.lineTo(x2, y2)
-              ctx.strokeStyle = waveformFillStyle
               ctx.stroke()
             }
             break
@@ -1346,7 +1799,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
             // Radial burst effect
             const radialCenterX = canvas.width / 2
             const radialCenterY = canvas.height / 2
-            const maxRadius = Math.min(waveformWidth, waveformHeight) * 0.4
+            const maxRadius = Math.min(waveformWidth, waveformHeight) * 0.65
             
             for (let i = 0; i < normalizedData.length; i++) {
               const angle = (i / normalizedData.length) * Math.PI * 2
@@ -1358,7 +1811,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
               const y2 = radialCenterY + Math.sin(angle) * length
               
               ctx.strokeStyle = waveformFillStyle
-              ctx.lineWidth = 3
+              ctx.lineWidth = 8
               ctx.lineCap = 'round'
               
               ctx.beginPath()
@@ -1411,7 +1864,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
             for (let i = 0; i < normalizedData.length; i++) {
               const barHeight = normalizedData[i] * freqMaxHeight
               const x = waveformX + i * freqBarWidth
-              const y = waveformY + waveformHeight - barHeight
+              const y = waveformY + (waveformHeight - barHeight) / 2
               
               // Skip if values are not finite
               if (!isFinite(x) || !isFinite(y) || !isFinite(barHeight)) continue
@@ -2064,7 +2517,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
             for (let layer = 0; layer < numLayers; layer++) {
               const layerOpacity = 0.3 + (layer / numLayers) * 0.7
               const layerHeight = waveformHeight * (0.4 + layer * 0.15)
-              const layerY = waveformY + waveformHeight - layerHeight
+              const layerY = waveformY + (waveformHeight - layerHeight) / 2
               
               ctx.globalAlpha = layerOpacity
               ctx.beginPath()
@@ -2372,8 +2825,23 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         waveformImageData.current = ctx.getImageData(0, 0, canvas.width, canvas.height)
         console.log('💾 Cached waveform canvas (without overlays)')
         
+        // Check if render was cancelled after waveform generation
+        if (isCancelled) {
+          console.log('Render cancelled after waveform caching')
+          setIsGenerating(false)
+          return
+        }
+        
         // Render text overlay after caching waveform
         if (showText && customText) {
+          // Wait for font to be ready before rendering
+          const fontSpec = `${fontSize}px "${fontFamily}"`
+          if (document.fonts && fontFamily !== 'Arial' && fontFamily !== 'sans-serif') {
+            await document.fonts.load(fontSpec).catch(() => {
+              console.warn('Font load failed in full render path, using fallback')
+            })
+          }
+          
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.font = `${fontSize}px "${fontFamily}", sans-serif`
@@ -2409,39 +2877,43 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         
         // Add QR code overlay if enabled
         if (showQRCode && qrCodeUrl) {
-          QRCode.toDataURL(qrCodeUrl, { width: 150, margin: 1 })
-            .then(qrDataUrl => {
-              const qrImg = new Image()
-              qrImg.onload = () => {
-                const qrSize = 150
-                const margin = canvas.width * 0.05
-                let qrX, qrY
-                
-                switch (qrCodePosition) {
-                  case 'top-left':
-                    qrX = margin
-                    qrY = margin
-                    break
-                  case 'top-right':
-                    qrX = canvas.width - qrSize - margin
-                    qrY = margin
-                    break
-                  case 'bottom-left':
-                    qrX = margin
-                    qrY = canvas.height - qrSize - margin
-                    break
-                  case 'bottom-right':
-                  default:
-                    qrX = canvas.width - qrSize - margin
-                    qrY = canvas.height - qrSize - margin
-                    break
-                }
-                
-                ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
+          // Use new percentage-based size and position
+          const qrSize = Math.floor(canvas.width * (qrCodeSize / 100))
+          try {
+            const qrDataUrl = await QRCode.toDataURL(qrCodeUrl, { 
+              width: qrSize, 
+              margin: 1,
+              color: {
+                dark: waveformColor,
+                light: '#00000000'
               }
+            })
+            
+            // Check if render was cancelled before drawing
+            if (isCancelled) {
+              console.log('🚫 Full path QR render cancelled')
+              setIsGenerating(false)
+              return
+            }
+            
+            const qrImg = new Image()
+            await new Promise<void>((resolve) => {
+              qrImg.onload = () => {
+                // Check again before drawing
+                if (!isCancelled) {
+                  // Position QR code using percentage-based coordinates
+                  const qrX = (qrCodeX / 100) * canvas.width - qrSize / 2
+                  const qrY = (qrCodeY / 100) * canvas.height - qrSize / 2
+                  ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
+                }
+                resolve()
+              }
+              qrImg.onerror = () => resolve()
               qrImg.src = qrDataUrl
             })
-            .catch(err => console.error('Error generating QR code:', err))
+          } catch (err) {
+            console.error('Error generating QR code:', err)
+          }
         }
         
         setIsGenerating(false)
@@ -2454,6 +2926,11 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     
     // Call the async render function
     renderCanvas()
+    
+    // Cleanup function to cancel render if component unmounts or dependencies change
+    return () => {
+      isCancelled = true
+    }
   }, [
     audioUrl, 
     waveformColor, 
@@ -2471,6 +2948,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     canvasReady, 
     waveformStyle, 
     waveformSize,
+    waveformHeightMultiplier,
     showText, 
     songTitle, 
     artistName, 
@@ -2487,11 +2965,17 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     showQRCode, 
     qrCodeUrl, 
     qrCodePosition,
+    qrCodeSize,
+    qrCodeX,
+    qrCodeY,
     detectedWords,
     showArtisticText,
     artisticTextStyle,
     artisticTextColor,
-    artisticTextOpacity
+    artisticTextOpacity,
+    fontLoaded, // Re-render when font finishes loading
+    canvasWidth, // Re-render when canvas dimensions change
+    canvasHeight
   ])
 
   const getProductIcon = () => {
@@ -2558,6 +3042,8 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
             )}
             <canvas
               ref={canvasRef}
+              width={canvasWidth}
+              height={canvasHeight}
               className="max-w-full h-auto rounded"
               style={{
                 maxHeight: '550px',

@@ -5,7 +5,9 @@ import { ProductType } from './customizer-store'
 export interface CartItem {
   id: string
   audioFileName: string
-  audioFileUrl: string
+  audioFileUrl?: string
+  audioSelectionStart?: number // Start time of selected region in seconds
+  audioSelectionEnd?: number   // End time of selected region in seconds
   waveformColor: string
   backgroundColor: string
   productType: ProductType
@@ -14,10 +16,17 @@ export interface CartItem {
   price: number
   quantity: number
   thumbnailUrl?: string
+  designUrl?: string
 }
 
 interface CartState {
   items: CartItem[]
+  isOpen: boolean
+  _hasHydrated: boolean
+  setHasHydrated: (hasHydrated: boolean) => void
+  openCart: () => void
+  closeCart: () => void
+  setCartOpen: (open: boolean) => void
   addItem: (item: Omit<CartItem, 'id' | 'quantity'>) => void
   removeItem: (id: string) => void
   updateQuantity: (id: string, quantity: number) => void
@@ -30,6 +39,24 @@ export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
       items: [],
+      isOpen: false,
+      _hasHydrated: false,
+
+      setHasHydrated: (hasHydrated) => {
+        set({ _hasHydrated: hasHydrated })
+      },
+
+      openCart: () => {
+        set({ isOpen: true })
+      },
+
+      closeCart: () => {
+        set({ isOpen: false })
+      },
+
+      setCartOpen: (open) => {
+        set({ isOpen: open })
+      },
 
       addItem: (item) => {
         const newItem: CartItem = {
@@ -74,6 +101,21 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: 'soundprints-cart',
+      // Only persist essential data, exclude large image data URLs and UI state
+      partialize: (state) => ({
+        items: state.items.map(item => ({
+          ...item,
+          // Don't persist large image data - use compressed thumbnail only
+          designUrl: undefined,
+          // Keep thumbnail but ensure it's compressed
+          thumbnailUrl: item.thumbnailUrl,
+        })),
+        // Don't persist modal open state
+        isOpen: undefined,
+      }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated?.(true)
+      },
     }
   )
 )

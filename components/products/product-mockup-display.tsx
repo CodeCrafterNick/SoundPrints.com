@@ -37,16 +37,42 @@ export function ProductMockupDisplay({ mockupRef }: ProductMockupDisplayProps) {
   // Blueprint 12 = Bella+Canvas 3001 Unisex Jersey Short Sleeve Tee
   // Print Provider 39 = SwiftPOD
   const printifyProducts: Record<string, { blueprintId: number; variantId: number; printProviderId: number }> = {
+    // Apparel
     't-shirt': { blueprintId: 12, variantId: 18100, printProviderId: 39 }, // Black / S
     't-shirt-white': { blueprintId: 12, variantId: 18540, printProviderId: 39 }, // White / S
     't-shirt-white-model': { blueprintId: 12, variantId: 18540, printProviderId: 39 }, // White / S (model photo)
     't-shirt-black': { blueprintId: 12, variantId: 18100, printProviderId: 39 }, // Black / S
     't-shirt-blue': { blueprintId: 12, variantId: 18396, printProviderId: 39 }, // Navy / S
+    'hoodie': { blueprintId: 536, variantId: 22206, printProviderId: 27 }, // Hanes Pullover Hoodie
+    
+    // Drinkware
     'mug': { blueprintId: 535, variantId: 10031, printProviderId: 27 }, // 11oz White Mug
     'travel-mug': { blueprintId: 1513, variantId: 61486, printProviderId: 111 }, // 20oz Travel Mug
-    'hoodie': { blueprintId: 536, variantId: 22206, printProviderId: 27 }, // Hanes Pullover Hoodie
-    'poster': { blueprintId: 554, variantId: 22206, printProviderId: 27 }, // Paper Poster
-    'canvas': { blueprintId: 555, variantId: 22220, printProviderId: 27 }, // Stretched Canvas
+    
+    // Wall Art - Canvas (Popular sizes)
+    'canvas-16x20': { blueprintId: 333, variantId: 45748, printProviderId: 99 }, // 16"x20" Canvas
+    'canvas-18x24': { blueprintId: 333, variantId: 45749, printProviderId: 99 }, // 18"x24" Canvas
+    'canvas-24x36': { blueprintId: 333, variantId: 45751, printProviderId: 99 }, // 24"x36" Canvas
+    
+    // Wall Art - Framed Canvas (Most Popular)
+    'framed-canvas-16x20': { blueprintId: 607, variantId: 51053, printProviderId: 99 }, // 16"x20" Framed Canvas
+    'framed-canvas-18x24': { blueprintId: 607, variantId: 51054, printProviderId: 99 }, // 18"x24" Framed Canvas
+    'framed-canvas-24x36': { blueprintId: 607, variantId: 51056, printProviderId: 99 }, // 24"x36" Framed Canvas
+    
+    // Wall Art - Poster (Unframed)
+    'poster-12x18': { blueprintId: 7, variantId: 17390, printProviderId: 99 }, // 12"x18" Poster
+    'poster-16x20': { blueprintId: 7, variantId: 17391, printProviderId: 99 }, // 16"x20" Poster
+    'poster-18x24': { blueprintId: 7, variantId: 17392, printProviderId: 99 }, // 18"x24" Poster
+    'poster-24x36': { blueprintId: 7, variantId: 17394, printProviderId: 99 }, // 24"x36" Poster
+    
+    // Wall Art - Framed Poster (with mat)
+    'framed-poster-12x18': { blueprintId: 19, variantId: 17440, printProviderId: 99 }, // 12"x18" Framed Poster
+    'framed-poster-16x20': { blueprintId: 19, variantId: 17441, printProviderId: 99 }, // 16"x20" Framed Poster
+    'framed-poster-18x24': { blueprintId: 19, variantId: 17442, printProviderId: 99 }, // 18"x24" Framed Poster
+    
+    // Legacy mappings
+    'poster': { blueprintId: 7, variantId: 17392, printProviderId: 99 }, // 18"x24" Poster (default)
+    'canvas': { blueprintId: 333, variantId: 45749, printProviderId: 99 }, // 18"x24" Canvas (default)
   }
   
   const {
@@ -340,16 +366,22 @@ export function ProductMockupDisplay({ mockupRef }: ProductMockupDisplayProps) {
       if (printifyProductIds.length > 0) {
         console.log('Cleaning up Printify products:', printifyProductIds)
         
-        // Delete all products in the background
+        // Delete all products in the background (silently fail if not configured)
         printifyProductIds.forEach(async (productId) => {
           try {
-            await fetch('/api/printify-cleanup', {
+            const response = await fetch('/api/printify-cleanup', {
               method: 'DELETE',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ productId })
             })
+            
+            if (!response.ok) {
+              // Silently log the error, don't throw
+              console.log('Printify cleanup skipped for:', productId)
+            }
           } catch (error) {
-            console.error('Failed to cleanup product:', productId, error)
+            // Silently fail - cleanup is optional
+            console.log('Printify cleanup not available:', productId)
           }
         })
       }
@@ -528,16 +560,19 @@ export function ProductMockupDisplay({ mockupRef }: ProductMockupDisplayProps) {
           >
             {useServerSide ? '✓ Sharp (Server)' : '○ Canvas (Client)'}
           </button>
-          <button
-            onClick={() => {
-              setUseTemplateMode(!useTemplateMode)
-              setUseServerSide(false)
-              setUsePrintify(false)
-            }}
-            className={`px-4 py-2 rounded text-sm ${useTemplateMode ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
-          >
-            {useTemplateMode ? '✓ Template (Mask)' : '○ Template (Mask)'}
-          </button>
+          {/* Template Mask button hidden */}
+          {false && (
+            <button
+              onClick={() => {
+                setUseTemplateMode(!useTemplateMode)
+                setUseServerSide(false)
+                setUsePrintify(false)
+              }}
+              className={`px-4 py-2 rounded text-sm ${useTemplateMode ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
+            >
+              {useTemplateMode ? '✓ Template (Mask)' : '○ Template (Mask)'}
+            </button>
+          )}
           <button
             onClick={() => {
               setUsePrintify(!usePrintify)
@@ -557,8 +592,8 @@ export function ProductMockupDisplay({ mockupRef }: ProductMockupDisplayProps) {
         </div>
       )}
       
-      {/* Mockup view selector for Printify (multiple angles) */}
-      {usePrintify && printifyMockups.length > 1 && (
+      {/* Mockup view selector hidden - only showing front views */}
+      {false && usePrintify && printifyMockups.length > 1 && (
         <div className="flex gap-2 justify-center mb-4 flex-wrap">
           {printifyMockups.map((mockup, index) => {
             // Determine label based on camera label in URL

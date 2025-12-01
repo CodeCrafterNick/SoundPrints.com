@@ -19,17 +19,20 @@ export function CartDialog() {
   const updateQuantity = useCartStore((state) => state.updateQuantity)
   const getTotal = useCartStore((state) => state.getTotal)
   const getItemCount = useCartStore((state) => state.getItemCount)
+  const hasHydrated = useCartStore((state) => state._hasHydrated)
+  const isOpen = useCartStore((state) => state.isOpen)
+  const setCartOpen = useCartStore((state) => state.setCartOpen)
 
   const itemCount = getItemCount()
   const total = getTotal()
 
   return (
-    <Dialog>
+    <Dialog open={isOpen} onOpenChange={setCartOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" className="relative">
           <ShoppingCart className="h-4 w-4 mr-2" />
           Cart
-          {itemCount > 0 && (
+          {hasHydrated && itemCount > 0 && (
             <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
               {itemCount}
             </span>
@@ -62,6 +65,20 @@ export function CartDialog() {
                   key={item.id}
                   className="flex items-center gap-4 p-4 border rounded-lg"
                 >
+                  {/* Product Preview */}
+                  <div className="relative w-24 h-24 flex-shrink-0 bg-muted rounded-md overflow-hidden">
+                    {item.thumbnailUrl ? (
+                      <img
+                        src={item.thumbnailUrl}
+                        alt={item.productType}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
+                        No preview
+                      </div>
+                    )}
+                  </div>
                   <div className="flex-1">
                     <h4 className="font-semibold text-sm">
                       {item.productType.replace('-', ' ').toUpperCase()} - {item.size}
@@ -69,16 +86,6 @@ export function CartDialog() {
                     <p className="text-xs text-muted-foreground mt-1">
                       {item.audioFileName}
                     </p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <div
-                        className="w-6 h-6 rounded border"
-                        style={{ backgroundColor: item.waveformColor }}
-                      />
-                      <div
-                        className="w-6 h-6 rounded border"
-                        style={{ backgroundColor: item.backgroundColor }}
-                      />
-                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -120,7 +127,7 @@ export function CartDialog() {
                   <span className="text-lg font-semibold">Total</span>
                   <span className="text-2xl font-bold">${total.toFixed(2)}</span>
                 </div>
-                <Link href="/checkout" className="block">
+                <Link href="/checkout" className="block" onClick={() => setCartOpen(false)}>
                   <Button className="w-full" size="lg">
                     Proceed to Checkout
                   </Button>

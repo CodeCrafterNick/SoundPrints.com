@@ -5,6 +5,12 @@ const PRINTIFY_SHOP_ID = process.env.PRINTIFY_SHOP_ID
 
 export async function DELETE(request: NextRequest) {
   try {
+    // Check if Printify is configured
+    if (!PRINTIFY_API_KEY || !PRINTIFY_SHOP_ID) {
+      console.log('Printify not configured, skipping cleanup')
+      return NextResponse.json({ success: true, skipped: true })
+    }
+
     const { productId } = await request.json()
 
     if (!productId) {

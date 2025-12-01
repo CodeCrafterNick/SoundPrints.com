@@ -184,7 +184,8 @@ export function RoomShowcase({ mockupRef }: RoomShowcaseProps) {
     bgImage.src = '/mockups/living-room.png'
     
     bgImage.onerror = (e) => {
-      console.error('Failed to load background image:', '/mockups/living-room.png', 'Error:', e.type || 'unknown error')
+      const errorType = typeof e === 'string' ? e : (e as Event).type || 'unknown error'
+      console.error('Failed to load background image:', '/mockups/living-room.png', 'Error:', errorType)
       // Draw a gray background as fallback and still try to render artwork
       if (canvas.width && canvas.height) {
         ctx.fillStyle = '#f0f0f0'
@@ -225,7 +226,8 @@ export function RoomShowcase({ mockupRef }: RoomShowcaseProps) {
       artworkImage.src = artworkDataUrl
       
       artworkImage.onerror = (e) => {
-        console.error('Failed to load artwork image:', 'Error:', e.type || e)
+        const errorType = typeof e === 'string' ? e : (e as Event).type || e
+        console.error('Failed to load artwork image:', 'Error:', errorType)
       }
       
       artworkImage.onload = () => {

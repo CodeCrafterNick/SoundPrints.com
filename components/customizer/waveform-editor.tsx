@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react'
 import WaveSurfer from 'wavesurfer.js'
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js'
 import { useCustomizerStore } from '@/lib/stores/customizer-store'
@@ -8,17 +8,40 @@ import { Slider } from '@/components/ui/slider'
 import { Button } from '@/components/ui/button'
 import { Play, Pause, X } from 'lucide-react'
 
-export function WaveformEditor() {
+export interface WaveformEditorHandle {
+  play: () => void
+  pause: () => void
+  togglePlayPause: () => void
+  isPlaying: () => boolean
+}
+
+export const WaveformEditor = forwardRef<WaveformEditorHandle>(function WaveformEditor(props, ref) {
   const waveformRef = useRef<HTMLDivElement>(null)
   const wavesurferRef = useRef<WaveSurfer | null>(null)
   const regionsRef = useRef<RegionsPlugin | null>(null)
+  const waveformColorRef = useRef<string>('#000000')
   
   const audioUrl = useCustomizerStore((state) => state.audioUrl)
   const audioDuration = useCustomizerStore((state) => state.audioDuration)
   const waveformColor = useCustomizerStore((state) => state.waveformColor)
+  const waveformUseGradient = useCustomizerStore((state) => state.waveformUseGradient)
+  const waveformGradientStops = useCustomizerStore((state) => state.waveformGradientStops)
+  const waveformGradientDirection = useCustomizerStore((state) => state.waveformGradientDirection)
+  const backgroundColor = useCustomizerStore((state) => state.backgroundColor)
+  const backgroundUseGradient = useCustomizerStore((state) => state.backgroundUseGradient)
+  const backgroundGradientStops = useCustomizerStore((state) => state.backgroundGradientStops)
+  const backgroundGradientDirection = useCustomizerStore((state) => state.backgroundGradientDirection)
+  const backgroundImage = useCustomizerStore((state) => state.backgroundImage)
+  const backgroundImagePosition = useCustomizerStore((state) => state.backgroundImagePosition)
   const selectedRegion = useCustomizerStore((state) => state.selectedRegion)
+  const hasHydrated = useCustomizerStore((state) => state._hasHydrated)
   const setAudioDuration = useCustomizerStore((state) => state.setAudioDuration)
   const setSelectedRegion = useCustomizerStore((state) => state.setSelectedRegion)
+  
+  // Update color refs whenever colors change
+  waveformColorRef.current = waveformColor || '#000000'
+  const backgroundColorRef = useRef<string>('#FFFFFF')
+  backgroundColorRef.current = backgroundColor || '#FFFFFF'
   
   const [sliderRange, setSliderRange] = useState<[number, number]>([0, 100])
   const [isPlaying, setIsPlaying] = useState(false)
@@ -28,6 +51,36 @@ export function WaveformEditor() {
   const [zoomLevel, setZoomLevel] = useState(1)
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, scrollLeft: 0 })
+
+  // Expose play/pause methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    play: () => {
+      if (wavesurferRef.current) {
+        const selectedRegion = useCustomizerStore.getState().selectedRegion
+        if (selectedRegion) {
+          wavesurferRef.current.setTime(selectedRegion.start)
+        }
+        wavesurferRef.current.play()
+      }
+    },
+    pause: () => {
+      wavesurferRef.current?.pause()
+    },
+    togglePlayPause: () => {
+      if (wavesurferRef.current) {
+        if (wavesurferRef.current.isPlaying()) {
+          wavesurferRef.current.pause()
+        } else {
+          const selectedRegion = useCustomizerStore.getState().selectedRegion
+          if (selectedRegion) {
+            wavesurferRef.current.setTime(selectedRegion.start)
+          }
+          wavesurferRef.current.play()
+        }
+      }
+    },
+    isPlaying: () => isPlaying
+  }), [isPlaying])
 
   useEffect(() => {
     if (!waveformRef.current || !audioUrl) {
@@ -41,6 +94,11 @@ export function WaveformEditor() {
       return
     }
 
+    // Track if component is still mounted
+    let isMounted = true
+    // Track if we're restoring a saved selection (to avoid re-saving in region-created)
+    let isRestoringSelection = false
+
     console.log('WaveformEditor: Initializing...', { audioUrl })
 
     const regions = RegionsPlugin.create()
@@ -48,49 +106,18 @@ export function WaveformEditor() {
 
     const wavesurfer = WaveSurfer.create({
       container: waveformRef.current,
-      waveColor: '#000000',
-      progressColor: '#000000',
-      cursorColor: '#000000',
+      waveColor: waveformColorRef.current,
+      progressColor: waveformColorRef.current,
+      cursorColor: waveformColorRef.current,
       cursorWidth: 2,
-      height: 200,
-      barWidth: 3,
-      barGap: 2,
-      barRadius: 2,
+      height: 100,
+      barWidth: 2,
+      barGap: 1,
+      barRadius: 0,
       barHeight: 1,
-      normalize: true,
-      splitChannels: false,
+      normalize: false,
+      minPxPerSec: 1,
       interact: false,
-      renderFunction: (channels, ctx) => {
-        const { width, height } = ctx.canvas
-        const halfHeight = height / 2
-        const channel = channels[0]
-
-        ctx.clearRect(0, 0, width, height)
-        
-        // Draw center line
-        ctx.fillStyle = 'rgba(128, 128, 128, 0.2)'
-        ctx.fillRect(0, halfHeight - 0.5, width, 1)
-
-        // Draw bars
-        const barWidth = 3
-        const barGap = 2
-        const barStep = barWidth + barGap
-        const barsCount = Math.floor(width / barStep)
-        
-        ctx.fillStyle = '#000000'
-
-        for (let i = 0; i < barsCount; i++) {
-          const x = i * barStep
-          const dataIndex = Math.floor((i / barsCount) * channel.length)
-          const amplitude = Math.abs(channel[dataIndex] || 0)
-          const barHeight = Math.min(amplitude * halfHeight * 1.2, halfHeight) // Amplify by 20% but cap at half height
-
-          // Draw bar above center
-          ctx.fillRect(x, halfHeight - barHeight, barWidth, barHeight)
-          // Draw bar below center (mirrored)
-          ctx.fillRect(x, halfHeight, barWidth, barHeight)
-        }
-      },
       plugins: [regions],
     })
 
@@ -99,37 +126,71 @@ export function WaveformEditor() {
     console.log('WaveformEditor: Loading audio...', audioUrl)
     
     // Load audio with proper error handling
-    try {
-      wavesurfer.load(audioUrl)
-    } catch (error) {
+    wavesurfer.load(audioUrl).catch((error) => {
+      // Ignore AbortError when component unmounts during load
+      if (error?.name === 'AbortError' || !isMounted) {
+        return
+      }
       console.error('WaveformEditor: Failed to load audio', error)
-    }
+    })
 
     wavesurfer.on('ready', () => {
+      if (!isMounted) return
       console.log('WaveformEditor: Waveform ready!', wavesurfer.getDuration())
-      console.log('WaveformEditor: Container children count:', waveformRef.current?.children.length)
-      console.log('WaveformEditor: Container innerHTML length:', waveformRef.current?.innerHTML.length)
-      console.log('WaveformEditor: WaveSurfer wrapper:', wavesurfer.getWrapper())
+      
+      // Get current state from store (not from closure which may be stale)
+      const storeState = useCustomizerStore.getState()
+      const currentHasHydrated = storeState._hasHydrated
+      const storedRegion = storeState.selectedRegion
+      const storedDuration = storeState.audioDuration
+      
       const duration = wavesurfer.getDuration()
+      console.log('WaveformEditor: Has hydrated?', currentHasHydrated)
+      console.log('WaveformEditor: Selected region from store:', storedRegion)
+      console.log('WaveformEditor: Stored duration:', storedDuration, 'Actual duration:', duration)
       setAudioDuration(duration)
       
-      // Only reset if there's no existing selection in store
-      const hasExistingSelection = selectedRegion && (selectedRegion.start > 0.01 || selectedRegion.end < duration - 0.01)
+      // Only restore selection if store has hydrated and we have a valid selection
+      // Be lenient with the end check - allow small floating point differences
+      const hasStoredSelection = currentHasHydrated && storedRegion && 
+        storedRegion.start >= 0 && 
+        storedRegion.end > 0 && 
+        storedRegion.end <= duration + 0.5 // Allow 0.5s tolerance
       
-      if (!hasExistingSelection) {
-        // Initialize with full duration
-        setSliderRange([0, 100])
-        setSelectedRegion({ start: 0, end: duration })
-      } else {
-        // Restore existing selection
-        const newSliderStart = (selectedRegion.start / duration) * 100
-        const newSliderEnd = (selectedRegion.end / duration) * 100
+      if (hasStoredSelection && storedRegion) {
+        // Restore the stored selection, clamping end to actual duration if needed
+        const clampedEnd = Math.min(storedRegion.end, duration)
+        console.log('WaveformEditor: ✅ Restoring stored selection', { start: storedRegion.start, end: clampedEnd })
+        const newSliderStart = (storedRegion.start / duration) * 100
+        const newSliderEnd = (clampedEnd / duration) * 100
         setSliderRange([newSliderStart, newSliderEnd])
+        
+        // Mark that we're restoring so region-created doesn't overwrite the store
+        isRestoringSelection = true
         
         // Create the region
         regionsRef.current?.addRegion({
-          start: selectedRegion.start,
-          end: selectedRegion.end,
+          start: storedRegion.start,
+          end: clampedEnd,
+          color: 'rgba(168, 85, 247, 0.15)',
+          drag: true,
+          resize: true,
+        })
+        
+        // Reset the flag after a short delay (after region-created fires)
+        setTimeout(() => {
+          isRestoringSelection = false
+        }, 100)
+      } else {
+        // Initialize with full duration if no stored selection or not yet hydrated
+        console.log('WaveformEditor: ⚠️  Initializing with full duration (no stored selection or not hydrated)')
+        setSliderRange([0, 100])
+        setSelectedRegion({ start: 0, end: duration })
+        
+        // Also create a visual region for the full duration
+        regionsRef.current?.addRegion({
+          start: 0,
+          end: duration,
           color: 'rgba(168, 85, 247, 0.15)',
           drag: true,
           resize: true,
@@ -144,6 +205,12 @@ export function WaveformEditor() {
     })
 
     regions.on('region-created', (region) => {
+      if (!isMounted) return
+      // Skip if we're just restoring a saved selection
+      if (isRestoringSelection) {
+        console.log('WaveformEditor: Region created (restoring, skipping store update)', region.start, region.end)
+        return
+      }
       console.log('WaveformEditor: Region created', region.start, region.end)
       
       // Clear any other regions first (only allow one region)
@@ -176,6 +243,7 @@ export function WaveformEditor() {
     })
 
     regions.on('region-updated', (region) => {
+      if (!isMounted) return
       console.log('WaveformEditor: Region updated', region.start, region.end)
       setIsResizing(true)
       const duration = wavesurfer.getDuration()
@@ -192,6 +260,7 @@ export function WaveformEditor() {
     })
 
     wavesurfer.on('play', () => {
+      if (!isMounted) return
       setIsPlaying(true)
       // Show cursor when playing
       if (wavesurferRef.current) {
@@ -205,6 +274,7 @@ export function WaveformEditor() {
     })
 
     wavesurfer.on('pause', () => {
+      if (!isMounted) return
       setIsPlaying(false)
       // Hide cursor when paused
       if (wavesurferRef.current) {
@@ -216,7 +286,18 @@ export function WaveformEditor() {
       }
     })
 
+    // Stop playback when reaching end of selected region
+    wavesurfer.on('timeupdate', (currentTime) => {
+      if (!isMounted) return
+      const region = useCustomizerStore.getState().selectedRegion
+      if (region && currentTime >= region.end) {
+        wavesurfer.pause()
+        wavesurfer.setTime(region.start) // Reset to start of selection
+      }
+    })
+
     wavesurfer.on('finish', () => {
+      if (!isMounted) return
       setIsPlaying(false)
       // Hide cursor when finished
       if (wavesurferRef.current) {
@@ -229,18 +310,119 @@ export function WaveformEditor() {
     })
 
     return () => {
-      // Don't destroy on unmount - keep the instance alive
-      // Only destroy when audioUrl actually changes
-      console.log('WaveformEditor: Component unmounting')
+      // Mark as unmounted first to prevent async callbacks from running
+      isMounted = false
+      
+      // Properly destroy the wavesurfer instance on unmount
+      // This is necessary because the container DOM element is removed when accordion closes
+      console.log('WaveformEditor: Component unmounting, destroying wavesurfer instance')
+      if (wavesurferRef.current) {
+        try {
+          // Unsubscribe all events before destroying to prevent callbacks during cleanup
+          wavesurferRef.current.unAll()
+          wavesurferRef.current.destroy()
+        } catch {
+          // Ignore any errors during cleanup (including AbortError)
+        }
+        wavesurferRef.current = null
+        regionsRef.current = null
+      }
     }
-  }, [audioUrl, setAudioDuration, waveformColor, selectedRegion])
+  }, [audioUrl, setAudioDuration, setSelectedRegion])
 
-  // Separate cleanup effect for when audioUrl actually changes
+  // Helper to create CSS gradient string
+  const createGradientString = (stops: Array<{ color: string; position: number }>, direction: string) => {
+    if (!stops || stops.length === 0) return null
+    const sortedStops = [...stops].sort((a, b) => a.position - b.position)
+    const colorStops = sortedStops.map(s => `${s.color} ${s.position}%`).join(', ')
+    return `linear-gradient(${direction}, ${colorStops})`
+  }
+
+  // Helper to create a CanvasGradient for WaveSurfer
+  const createCanvasGradient = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    stops: Array<{ color: string; position: number }>,
+    direction: string
+  ): CanvasGradient | null => {
+    if (!stops || stops.length === 0) return null
+    
+    // Parse direction to determine gradient coordinates
+    let x0 = 0, y0 = 0, x1 = 0, y1 = height
+    if (direction.includes('right')) {
+      x0 = 0; y0 = height / 2; x1 = width; y1 = height / 2
+    } else if (direction.includes('left')) {
+      x0 = width; y0 = height / 2; x1 = 0; y1 = height / 2
+    } else if (direction.includes('top')) {
+      x0 = width / 2; y0 = height; x1 = width / 2; y1 = 0
+    } else {
+      // Default: to bottom
+      x0 = width / 2; y0 = 0; x1 = width / 2; y1 = height
+    }
+    
+    const gradient = ctx.createLinearGradient(x0, y0, x1, y1)
+    const sortedStops = [...stops].sort((a, b) => a.position - b.position)
+    sortedStops.forEach(stop => {
+      gradient.addColorStop(stop.position / 100, stop.color)
+    })
+    return gradient
+  }
+
+  // Update colors dynamically without reinitializing
+  useEffect(() => {
+    if (!wavesurferRef.current) return
+    
+    const wrapper = wavesurferRef.current.getWrapper()
+    const canvas = wrapper?.querySelector('canvas')
+    
+    // Determine waveform color (gradient or solid)
+    let effectiveWaveformColor: string | CanvasGradient = waveformColor || '#000000'
+    if (waveformUseGradient && waveformGradientStops && waveformGradientStops.length > 0 && canvas) {
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        const gradient = createCanvasGradient(
+          ctx,
+          canvas.width,
+          canvas.height,
+          waveformGradientStops,
+          waveformGradientDirection || 'to bottom'
+        )
+        if (gradient) {
+          effectiveWaveformColor = gradient
+        }
+      }
+    }
+    
+    wavesurferRef.current.setOptions({
+      waveColor: effectiveWaveformColor,
+      progressColor: effectiveWaveformColor,
+      cursorColor: typeof effectiveWaveformColor === 'string' ? effectiveWaveformColor : (waveformGradientStops?.[0]?.color || '#000000'),
+    })
+    
+    // Make sure wrapper and canvas are transparent so our background div shows through
+    if (wrapper) {
+      wrapper.style.backgroundColor = 'transparent'
+      wrapper.style.backgroundImage = 'none'
+      if (canvas) {
+        canvas.style.backgroundColor = 'transparent'
+      }
+    }
+  }, [waveformColor, waveformUseGradient, waveformGradientStops, waveformGradientDirection, backgroundColor, backgroundUseGradient, backgroundGradientStops, backgroundGradientDirection, backgroundImage, backgroundImagePosition])
+
+  // Separate cleanup effect for when audioUrl changes
   useEffect(() => {
     return () => {
       if (wavesurferRef.current) {
         console.log('WaveformEditor: Cleanup - destroying wavesurfer due to audioUrl change')
-        wavesurferRef.current.destroy()
+        try {
+          wavesurferRef.current.destroy()
+        } catch (error) {
+          // Ignore AbortError during cleanup - it's expected
+          if (error instanceof Error && error.name !== 'AbortError') {
+            console.error('WaveformEditor: Error during cleanup:', error)
+          }
+        }
         wavesurferRef.current = null
         regionsRef.current = null
       }
@@ -291,14 +473,8 @@ export function WaveformEditor() {
     
     const startTime = (value[0] / 100) * audioDuration
     const endTime = (value[1] / 100) * audioDuration
-    const duration = endTime - startTime
     
     setSelectedRegion({ start: startTime, end: endTime })
-    
-    // Calculate zoom level based on selected duration
-    // More zoom for smaller selections
-    const zoomLevel = Math.max(1, Math.floor(audioDuration / duration))
-    wavesurferRef.current.zoom(zoomLevel)
     
     // Clear existing regions and create new one
     regionsRef.current.clearRegions()
@@ -333,46 +509,32 @@ export function WaveformEditor() {
     wavesurferRef.current.pause()
     setIsPlaying(false)
     
-    // Clear all regions
+    // Clear all regions (visual selection boxes)
     regionsRef.current.clearRegions()
     
-    // Reset to full duration in state
+    // Reset slider to full range
     setSliderRange([0, 100])
-    setSelectedRegion({ start: 0, end: audioDuration })
+    
+    // Set selection to full audio duration (use entire waveform)
+    const duration = wavesurferRef.current.getDuration()
+    setSelectedRegion({ start: 0, end: duration })
+    
+    // Create a new region for the full duration (visual indicator)
+    regionsRef.current.addRegion({
+      start: 0,
+      end: duration,
+      color: 'rgba(59, 130, 246, 0.3)',
+      drag: false,
+      resize: true,
+    })
     
     // Reset playhead to start
     wavesurferRef.current.setTime(0)
-    
-    // Reset zoom
-    setZoomLevel(1)
-    wavesurferRef.current.zoom(1)
   }
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (!wavesurferRef.current) return
-    
-    e.preventDefault()
-    
-    const wrapper = wavesurferRef.current.getWrapper()
-    const rect = wrapper.getBoundingClientRect()
-    const mouseX = e.clientX - rect.left
-    const mousePercent = mouseX / rect.width
-    
-    // Calculate new zoom level
-    const delta = e.deltaY > 0 ? -5 : 5 // Zoom out on scroll down, in on scroll up
-    const newZoom = Math.max(1, Math.min(zoomLevel + delta, 200))
-    
-    setZoomLevel(newZoom)
-    wavesurferRef.current.zoom(newZoom)
-    
-    // Scroll to keep the mouse position centered
-    if (newZoom > 1) {
-      setTimeout(() => {
-        const wrapper = wavesurferRef.current!.getWrapper()
-        const scrollableWidth = wrapper.scrollWidth - wrapper.clientWidth
-        wrapper.scrollLeft = scrollableWidth * mousePercent
-      }, 0)
-    }
+    // Allow default horizontal scrolling behavior
+    // Don't zoom - keep bars relative to entire audio file
   }
 
   // Stop playback when it reaches the end of the selected region
@@ -392,6 +554,43 @@ export function WaveformEditor() {
     const interval = setInterval(checkPlaybackPosition, 50)
     return () => clearInterval(interval)
   }, [selectedRegion, isPlaying])
+
+  // Render buttons to external container using effect
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    
+    const container = document.getElementById('waveform-controls')
+    if (!container) return
+    
+    // Create root if it doesn't exist
+    const root = (container as any)._reactRoot || ((container as any)._reactRoot = require('react-dom/client').createRoot(container))
+    
+    root.render(
+      <>
+        <Button
+          onClick={handlePlayPause}
+          size="sm"
+          variant="secondary"
+          className="h-7 w-7 p-0"
+          disabled={!audioUrl}
+        >
+          {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+        </Button>
+        {(regionsRef.current?.getRegions()?.length ?? 0) > 0 && (
+          <Button
+            onClick={handleClearRange}
+            size="sm"
+            variant="outline"
+            className="h-7 w-7 p-0"
+            disabled={!audioUrl}
+            title="Clear selection and reset zoom"
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        )}
+      </>
+    )
+  }, [audioUrl, isPlaying, handlePlayPause, handleClearRange])
 
   // Custom drag selection handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -501,6 +700,26 @@ export function WaveformEditor() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
+  // Background style for the waveform container
+  const getBackgroundStyle = (): React.CSSProperties => {
+    if (backgroundImage) {
+      return {
+        backgroundImage: `url(${backgroundImage})`,
+        backgroundSize: 'cover',
+        backgroundPosition: backgroundImagePosition || 'center',
+      }
+    } else if (backgroundUseGradient && backgroundGradientStops && backgroundGradientStops.length > 0) {
+      const gradientString = createGradientString(backgroundGradientStops, backgroundGradientDirection || 'to bottom')
+      return {
+        backgroundImage: gradientString || 'none',
+      }
+    } else {
+      return {
+        backgroundColor: backgroundColor || '#FFFFFF',
+      }
+    }
+  }
+
   if (!audioUrl) {
     return (
       <div className="w-full h-32 flex items-center justify-center border rounded-lg bg-muted/20">
@@ -520,36 +739,23 @@ export function WaveformEditor() {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
+        {/* Background layer that shows the gradient/image */}
+        <div 
+          className="absolute inset-0 rounded-lg z-0"
+          style={getBackgroundStyle()}
+        />
         <div 
           ref={waveformRef} 
-          className="w-full rounded-lg border bg-white select-none overflow-hidden" 
+          className="w-full rounded-lg border select-none relative z-10" 
           style={{ 
-            height: '200px',
-            cursor: isPanning ? 'grabbing' : isDragging ? 'crosshair' : zoomLevel > 1 ? 'grab' : 'default'
+            height: '100px',
+            cursor: isDragging ? 'crosshair' : 'default',
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            backgroundColor: 'transparent',
           }}
           onWheel={handleWheel}
         />
-        <Button
-          onClick={handlePlayPause}
-          size="sm"
-          variant="secondary"
-          className="absolute bottom-2 right-2 z-10 pointer-events-auto"
-          disabled={!audioUrl}
-        >
-          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-        </Button>
-        {(regionsRef.current?.getRegions().length > 0 || zoomLevel > 1) && (
-          <Button
-            onClick={handleClearRange}
-            size="sm"
-            variant="outline"
-            className="absolute bottom-2 right-14 z-10 pointer-events-auto"
-            disabled={!audioUrl}
-            title="Clear selection and reset zoom"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
       </div>
       
       <div className="space-y-2">
@@ -567,12 +773,9 @@ export function WaveformEditor() {
           className="w-full"
         />
         <p className="text-xs text-muted-foreground text-center">
-          Drag on the waveform to select a range. {zoomLevel > 1 ? 'Drag empty space to pan.' : 'Scroll to zoom in.'}
+          Drag on the waveform to select a range.
         </p>
       </div>
     </div>
   )
-}
-        <p className="text-xs text-muted-foreground text-center">
-          Drag on the waveform to select a range. Scroll to zoom in.
-        </p>
+})

@@ -150,11 +150,17 @@ export class MaskBasedGenerator {
           .modulate({ brightness: 1.2 }) // Lighten for subtle effect
           .toBuffer()
 
+        // Apply opacity to the texture before compositing
+        const textureOpacity = config.textureOpacity || 0.15
+        const textureWithOpacity = await sharp(textureOverlay)
+          .ensureAlpha()
+          .linear(textureOpacity, 0) // Adjust alpha channel
+          .toBuffer()
+
         processedDesign = await sharp(processedDesign)
           .composite([{
-            input: textureOverlay,
-            blend: 'overlay',
-            opacity: (config.textureOpacity || 0.15) * 100 // Default 15% opacity
+            input: textureWithOpacity,
+            blend: 'overlay'
           }])
           .toBuffer()
       } catch (error) {

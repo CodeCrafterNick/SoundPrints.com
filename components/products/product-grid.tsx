@@ -81,6 +81,11 @@ export function ProductGrid({ mockups, designDataUrl, onProductSelect }: Product
               const isSelected = selectedTemplateId === mockup.templateId
               const isAdding = addingToCart === mockup.templateId
 
+              // Skip mockups without valid URLs
+              if (!mockup.url || mockup.url.trim() === '') {
+                return null
+              }
+
               return (
                 <div
                   key={mockup.templateId}
@@ -180,6 +185,11 @@ export function ProductGrid({ mockups, designDataUrl, onProductSelect }: Product
               const productInfo = getProductInfo(mockup.templateId)
               const isSelected = selectedTemplateId === mockup.templateId
               const isAdding = addingToCart === mockup.templateId
+
+              // Skip mockups without valid URLs
+              if (!mockup.url || mockup.url.trim() === '') {
+                return null
+              }
 
               return (
                 <div

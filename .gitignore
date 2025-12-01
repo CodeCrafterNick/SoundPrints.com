@@ -63,7 +63,14 @@ public/mockups/*.jpg
 public/mockups/*.png
 public/mockups/white-shirt/
 public/mockups/blueprint-images/
+public/mockups/wall-art/*.psd
+public/mockups/wall-art/*.zip
+public/mockups/wall-art/**/*.psd
+public/mockups/wall-art/**/*.zip
 *.json.backup
 
 # Playwright MCP (test screenshots)
 .playwright-mcp/
+
+# clerk configuration (can include secrets)
+/.clerk/

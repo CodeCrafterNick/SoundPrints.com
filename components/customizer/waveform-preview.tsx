@@ -9,6 +9,9 @@ interface WaveformPreviewProps {
   onEditClick: () => void
 }
 
+// Cache decoded audio buffers to avoid re-downloading
+const audioBufferCache = new Map<string, AudioBuffer>()
+
 export function WaveformPreview({ onEditClick }: WaveformPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const audioUrl = useCustomizerStore((state) => state.audioUrl)
@@ -24,30 +27,27 @@ export function WaveformPreview({ onEditClick }: WaveformPreviewProps) {
 
     // Set canvas size
     canvas.width = canvas.offsetWidth * 2 // 2x for retina
-    canvas.height = 60 * 2 // 2x for retina
+    canvas.height = 50 * 2 // 2x for retina (reduced from 60 to 50)
     ctx.scale(2, 2)
 
-    fetch(audioUrl)
-      .then(response => response.arrayBuffer())
-      .then(arrayBuffer => {
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-        return audioContext.decodeAudioData(arrayBuffer)
-      })
-      .then(audioBuffer => {
-        const rawData = audioBuffer.getChannelData(0)
-        const sampleRate = audioBuffer.sampleRate
-        
-        // Extract selected region
-        const startSample = Math.floor(selectedRegion.start * sampleRate)
-        const endSample = Math.floor(selectedRegion.end * sampleRate)
-        const regionData = rawData.slice(startSample, endSample)
+    // Check cache first
+    const cachedBuffer = audioBufferCache.get(audioUrl)
+    
+    const processAudio = (audioBuffer: AudioBuffer) => {
+      const rawData = audioBuffer.getChannelData(0)
+      const sampleRate = audioBuffer.sampleRate
+      
+      // Extract selected region
+      const startSample = Math.floor(selectedRegion.start * sampleRate)
+      const endSample = Math.floor(selectedRegion.end * sampleRate)
+      const regionData = rawData.slice(startSample, endSample)
 
-        // Draw waveform
-        const width = canvas.offsetWidth
-        const height = 60
-        const halfHeight = height / 2
+      // Draw waveform
+      const width = canvas.offsetWidth
+      const height = 50
+      const halfHeight = height / 2
 
-        ctx.clearRect(0, 0, width, height)
+      ctx.clearRect(0, 0, width, height)
 
         // Draw center line
         ctx.fillStyle = 'rgba(128, 128, 128, 0.2)'
@@ -81,32 +81,36 @@ export function WaveformPreview({ onEditClick }: WaveformPreviewProps) {
           ctx.fillRect(x, halfHeight - barHeight, barWidth, barHeight)
           ctx.fillRect(x, halfHeight, barWidth, barHeight)
         }
-      })
-      .catch(error => {
-        console.error('Error rendering preview waveform:', error)
-      })
+    }
+
+    if (cachedBuffer) {
+      // Use cached buffer
+      processAudio(cachedBuffer)
+    } else {
+      // Fetch and cache
+      fetch(audioUrl)
+        .then(response => response.arrayBuffer())
+        .then(arrayBuffer => {
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+          return audioContext.decodeAudioData(arrayBuffer)
+        })
+        .then(audioBuffer => {
+          audioBufferCache.set(audioUrl, audioBuffer)
+          processAudio(audioBuffer)
+        })
+        .catch(error => {
+          console.error('Error rendering preview waveform:', error)
+        })
+    }
   }, [audioUrl, selectedRegion, waveformColor])
 
   if (!audioUrl) return null
 
   return (
-    <div className="relative mb-4 p-3 border rounded-lg bg-muted/20">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-medium text-muted-foreground">Current Waveform</p>
-        <Button
-          onClick={onEditClick}
-          size="sm"
-          variant="ghost"
-          className="h-6 px-2 text-xs"
-        >
-          <Edit3 className="h-3 w-3 mr-1" />
-          Edit
-        </Button>
-      </div>
+    <div className="relative">
       <canvas
         ref={canvasRef}
-        className="w-full rounded"
-        style={{ height: '60px' }}
+        className="w-full rounded-md bg-white/50 h-[50px]"
       />
     </div>
   )

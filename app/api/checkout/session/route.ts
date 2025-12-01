@@ -83,6 +83,13 @@ export async function POST(req: NextRequest) {
     })
 
     // Store order in database before payment
+    // Include audio selection data for each item
+    const itemsWithAudioData = items.map((item: any) => ({
+      ...item,
+      audioSelectionStart: item.audioSelectionStart,
+      audioSelectionEnd: item.audioSelectionEnd,
+    }))
+
     const { data: order, error: dbError } = await supabase
       .from('orders')
       .insert({
@@ -90,7 +97,7 @@ export async function POST(req: NextRequest) {
         recipient_name: `${shippingInfo.firstName} ${shippingInfo.lastName}`,
         recipient_email: shippingInfo.email,
         shipping_address: JSON.stringify(shippingInfo),
-        items: items,
+        items: itemsWithAudioData,
         design_urls: designUrls || {},
         cost_subtotal: subtotal,
         cost_shipping: shipping,

@@ -5,9 +5,94 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCartStore } from '@/lib/stores/cart-store'
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
 import { StripePayment } from '@/components/checkout/stripe-payment'
+import { SiteHeader } from '@/components/site-header'
+import { SiteFooter } from '@/components/site-footer'
 import { ArrowLeft, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+
+const US_STATES = [
+  { value: 'AL', label: 'Alabama' },
+  { value: 'AK', label: 'Alaska' },
+  { value: 'AZ', label: 'Arizona' },
+  { value: 'AR', label: 'Arkansas' },
+  { value: 'CA', label: 'California' },
+  { value: 'CO', label: 'Colorado' },
+  { value: 'CT', label: 'Connecticut' },
+  { value: 'DE', label: 'Delaware' },
+  { value: 'FL', label: 'Florida' },
+  { value: 'GA', label: 'Georgia' },
+  { value: 'HI', label: 'Hawaii' },
+  { value: 'ID', label: 'Idaho' },
+  { value: 'IL', label: 'Illinois' },
+  { value: 'IN', label: 'Indiana' },
+  { value: 'IA', label: 'Iowa' },
+  { value: 'KS', label: 'Kansas' },
+  { value: 'KY', label: 'Kentucky' },
+  { value: 'LA', label: 'Louisiana' },
+  { value: 'ME', label: 'Maine' },
+  { value: 'MD', label: 'Maryland' },
+  { value: 'MA', label: 'Massachusetts' },
+  { value: 'MI', label: 'Michigan' },
+  { value: 'MN', label: 'Minnesota' },
+  { value: 'MS', label: 'Mississippi' },
+  { value: 'MO', label: 'Missouri' },
+  { value: 'MT', label: 'Montana' },
+  { value: 'NE', label: 'Nebraska' },
+  { value: 'NV', label: 'Nevada' },
+  { value: 'NH', label: 'New Hampshire' },
+  { value: 'NJ', label: 'New Jersey' },
+  { value: 'NM', label: 'New Mexico' },
+  { value: 'NY', label: 'New York' },
+  { value: 'NC', label: 'North Carolina' },
+  { value: 'ND', label: 'North Dakota' },
+  { value: 'OH', label: 'Ohio' },
+  { value: 'OK', label: 'Oklahoma' },
+  { value: 'OR', label: 'Oregon' },
+  { value: 'PA', label: 'Pennsylvania' },
+  { value: 'RI', label: 'Rhode Island' },
+  { value: 'SC', label: 'South Carolina' },
+  { value: 'SD', label: 'South Dakota' },
+  { value: 'TN', label: 'Tennessee' },
+  { value: 'TX', label: 'Texas' },
+  { value: 'UT', label: 'Utah' },
+  { value: 'VT', label: 'Vermont' },
+  { value: 'VA', label: 'Virginia' },
+  { value: 'WA', label: 'Washington' },
+  { value: 'WV', label: 'West Virginia' },
+  { value: 'WI', label: 'Wisconsin' },
+  { value: 'WY', label: 'Wyoming' },
+  { value: 'DC', label: 'District of Columbia' },
+]
+
+const COUNTRIES = [
+  { value: 'US', label: 'United States' },
+  { value: 'CA', label: 'Canada' },
+  { value: 'GB', label: 'United Kingdom' },
+  { value: 'AU', label: 'Australia' },
+  { value: 'DE', label: 'Germany' },
+  { value: 'FR', label: 'France' },
+  { value: 'IT', label: 'Italy' },
+  { value: 'ES', label: 'Spain' },
+  { value: 'NL', label: 'Netherlands' },
+  { value: 'BE', label: 'Belgium' },
+  { value: 'AT', label: 'Austria' },
+  { value: 'CH', label: 'Switzerland' },
+  { value: 'SE', label: 'Sweden' },
+  { value: 'NO', label: 'Norway' },
+  { value: 'DK', label: 'Denmark' },
+  { value: 'FI', label: 'Finland' },
+  { value: 'IE', label: 'Ireland' },
+  { value: 'PT', label: 'Portugal' },
+  { value: 'NZ', label: 'New Zealand' },
+  { value: 'JP', label: 'Japan' },
+  { value: 'KR', label: 'South Korea' },
+  { value: 'SG', label: 'Singapore' },
+  { value: 'HK', label: 'Hong Kong' },
+  { value: 'MX', label: 'Mexico' },
+  { value: 'BR', label: 'Brazil' },
+]
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -26,7 +111,7 @@ export default function CheckoutPage() {
     city: '',
     state: '',
     zipCode: '',
-    country: 'USA',
+    country: 'US',
   })
   
   const subtotal = getTotal()
@@ -56,7 +141,7 @@ export default function CheckoutPage() {
     setShowPayment(true)
   }
 
-  const handlePaymentSuccess = async () => {
+  const handlePaymentSuccess = async (paymentIntentId: string) => {
     try {
       // Create order in database
       const orderData = {
@@ -83,15 +168,20 @@ export default function CheckoutPage() {
             customText: item.customText,
             price: item.price.toString(),
             quantity: item.quantity,
+            designUrl: item.designUrl,
           })),
-          paymentIntentId: 'temp', // This will be updated after payment
+          paymentIntentId,
         }),
       })
 
       if (response.ok) {
+        const data = await response.json()
         clearCart()
         toast.success('Order placed successfully!')
-        router.push('/order-confirmation')
+        router.push(`/order-confirmation?orderId=${data.order.id}`)
+      } else {
+        const error = await response.json()
+        toast.error(error.error || 'Failed to create order')
       }
     } catch (error) {
       console.error('Error creating order:', error)
@@ -101,18 +191,9 @@ export default function CheckoutPage() {
 
   if (items.length === 0) {
     return (
-      <div className="min-h-screen bg-background">
-        <header className="border-b">
-          <div className="container mx-auto px-4 py-4">
-            <Link href="/create">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Create
-              </Button>
-            </Link>
-          </div>
-        </header>
-        <div className="container mx-auto px-4 py-16 text-center">
+      <div className="min-h-screen flex flex-col bg-background">
+        <SiteHeader />
+        <main className="flex-1 container mx-auto px-4 py-16 text-center">
           <h1 className="text-3xl font-bold mb-4">Your cart is empty</h1>
           <p className="text-muted-foreground mb-8">
             Add some custom SoundPrints to get started!
@@ -120,25 +201,17 @@ export default function CheckoutPage() {
           <Link href="/create">
             <Button>Create Your SoundPrint</Button>
           </Link>
-        </div>
+        </main>
+        <SiteFooter />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4">
-          <Link href="/create">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Create
-            </Button>
-          </Link>
-        </div>
-      </header>
+    <div className="min-h-screen flex flex-col bg-background">
+      <SiteHeader />
 
-      <div className="container mx-auto px-4 py-8">
+      <main className="flex-1 container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold mb-8">Checkout</h1>
 
         <div className="grid lg:grid-cols-3 gap-8">
@@ -149,6 +222,20 @@ export default function CheckoutPage() {
               <div className="space-y-4">
                 {items.map((item) => (
                   <div key={item.id} className="flex gap-4 pb-4 border-b last:border-0">
+                    {/* Product Preview */}
+                    <div className="relative w-32 h-32 flex-shrink-0 bg-muted rounded-md overflow-hidden">
+                      {item.thumbnailUrl ? (
+                        <img
+                          src={item.thumbnailUrl}
+                          alt={item.productType}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">
+                          No preview
+                        </div>
+                      )}
+                    </div>
                     <div className="flex-1">
                       <h3 className="font-semibold">
                         {item.productType.replace('-', ' ').toUpperCase()} - {item.size}
@@ -156,16 +243,6 @@ export default function CheckoutPage() {
                       <p className="text-sm text-muted-foreground mt-1">
                         {item.audioFileName}
                       </p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <div
-                          className="w-6 h-6 rounded border"
-                          style={{ backgroundColor: item.waveformColor }}
-                        />
-                        <div
-                          className="w-6 h-6 rounded border"
-                          style={{ backgroundColor: item.backgroundColor }}
-                        />
-                      </div>
                       <div className="flex items-center gap-4 mt-3">
                         <div className="flex items-center gap-2">
                           <Button
@@ -279,17 +356,21 @@ export default function CheckoutPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">State *</label>
-                    <input
-                      type="text"
-                      className="w-full mt-1 px-3 py-2 border rounded-md"
-                      placeholder="NY"
-                      value={shippingInfo.state}
-                      onChange={(e) =>
-                        setShippingInfo({ ...shippingInfo, state: e.target.value })
-                      }
-                      disabled={showPayment}
-                    />
+                    <label className="text-sm font-medium" htmlFor="state-select">State *</label>
+                    <div className="mt-1">
+                      <Combobox
+                        id="state-select"
+                        options={US_STATES}
+                        value={shippingInfo.state}
+                        onChange={(value) =>
+                          setShippingInfo({ ...shippingInfo, state: value })
+                        }
+                        placeholder="Select state..."
+                        searchPlaceholder="Search states..."
+                        emptyText="No state found."
+                        disabled={showPayment}
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -307,17 +388,21 @@ export default function CheckoutPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Country *</label>
-                    <input
-                      type="text"
-                      className="w-full mt-1 px-3 py-2 border rounded-md"
-                      placeholder="USA"
-                      value={shippingInfo.country}
-                      onChange={(e) =>
-                        setShippingInfo({ ...shippingInfo, country: e.target.value })
-                      }
-                      disabled={showPayment}
-                    />
+                    <label className="text-sm font-medium" htmlFor="country-select">Country *</label>
+                    <div className="mt-1">
+                      <Combobox
+                        id="country-select"
+                        options={COUNTRIES}
+                        value={shippingInfo.country}
+                        onChange={(value) =>
+                          setShippingInfo({ ...shippingInfo, country: value })
+                        }
+                        placeholder="Select country..."
+                        searchPlaceholder="Search countries..."
+                        emptyText="No country found."
+                        disabled={showPayment}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -388,7 +473,8 @@ export default function CheckoutPage() {
             </div>
           </div>
         </div>
-      </div>
+      </main>
+      <SiteFooter />
     </div>
   )
 }

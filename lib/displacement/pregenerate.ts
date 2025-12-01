@@ -6,6 +6,13 @@
 import { maskBasedGenerator } from './mask-generator'
 import { templateManager } from './template-manager'
 import { cacheManager } from './cache'
+import type { MockupTemplate } from './types'
+
+// Helper to map product type to category
+function getTemplateCategory(template: MockupTemplate): 'wall-art' | 'apparel' {
+  const wallArtTypes = ['poster', 'canvas']
+  return wallArtTypes.includes(template.productType) ? 'wall-art' : 'apparel'
+}
 
 export interface MockupGenerationRequest {
   designBuffer: Buffer
@@ -44,15 +51,29 @@ export class MockupPreGenerator {
 
     // Apply category filter
     if (category && category !== 'all') {
-      templates = templates.filter(t => t.category === category)
+      templates = templates.filter(t => getTemplateCategory(t) === category)
     }
 
     // Apply additional filters
     if (productFilters?.category) {
-      templates = templates.filter(t => t.category === productFilters.category)
+      templates = templates.filter(t => getTemplateCategory(t) === productFilters.category)
     }
     if (productFilters?.productType) {
       templates = templates.filter(t => t.productType === productFilters.productType)
+    }
+
+    // For apparel, only return front views in black and white
+    const apparelTypes = ['tshirt', 'hoodie']
+    if (category === 'apparel' || templates.some(t => apparelTypes.includes(t.productType))) {
+      templates = templates.filter(t => {
+        // Only keep front views
+        if (t.angle !== 'front') return false
+        
+        // Only keep black and white colors
+        if (t.color && !['black', 'white'].includes(t.color.toLowerCase())) return false
+        
+        return true
+      })
     }
 
     console.log(`Pre-generating ${templates.length} mockups...`)
@@ -105,11 +126,17 @@ export class MockupPreGenerator {
       wasCached = true
     } else {
       // Generate new mockup
-      buffer = await maskBasedGenerator.generate(templateId, designBuffer, {
-        brightness: 0.92,
-        blendMode: 'multiply',
-        textureOverlay: !!template.displacementPath,
-        textureOpacity: 0.15,
+      buffer = await maskBasedGenerator.generate({
+        templateId,
+        designBuffer,
+        config: {
+          brightness: 0.92,
+          blendMode: 'multiply',
+          textureOverlay: !!template.displacementPath,
+          textureOpacity: 0.15,
+        },
+        outputFormat: 'png',
+        outputQuality: 90
       })
 
       // Cache result
@@ -121,9 +148,8 @@ export class MockupPreGenerator {
     return {
       templateId: template.id,
       name: template.name,
-      category: template.category || 'unknown',
+      category: getTemplateCategory(template),
       productType: template.productType,
-      size: template.size,
       buffer,
       cached: wasCached,
       renderTime,
@@ -157,8 +183,9 @@ export class MockupPreGenerator {
    */
   async getStats(): Promise<{
     totalTemplates: number
-    byCategory: Record<string, number>
-    byProduct: Record<string, number>
+    byProductType: Record<string, number>
+    byAngle: Record<string, number>
+    byColor: Record<string, number>
   }> {
     return templateManager.getStats()
   }
