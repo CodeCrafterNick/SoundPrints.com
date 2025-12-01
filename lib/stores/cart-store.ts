@@ -17,6 +17,13 @@ export interface CartItem {
   quantity: number
   thumbnailUrl?: string
   designUrl?: string
+  // Printify-specific fields for order fulfillment
+  printifyBlueprintId?: string
+  printifyVariantId?: string
+  waveformStyle?: string
+  designPreset?: string
+  productColor?: string
+  mockupUrl?: string
 }
 
 interface CartState {

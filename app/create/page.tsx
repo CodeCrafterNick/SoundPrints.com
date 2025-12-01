@@ -277,6 +277,13 @@ export default function CreatePage() {
       customText,
       price: selectedSize.price,
       thumbnailUrl,
+      // Printify-specific fields for order fulfillment/resubmission
+      printifyBlueprintId: String(selectedProduct.blueprintId),
+      printifyVariantId: selectedSize.value, // Size value like '18x24'
+      waveformStyle: waveformStyle,
+      designPreset: undefined, // Could add preset tracking later
+      productColor: undefined, // For apparel products
+      mockupUrl: undefined, // Generated mockup URL if available
       // designUrl is generated on-demand at checkout, not stored
     })
 

@@ -136,7 +136,14 @@ export async function POST(req: NextRequest) {
         custom_text: item.customText || '',
         price: parseFloat(item.price || '0'),
         quantity: parseInt(item.quantity || '1'),
-        print_file_url: item.designUrl || ''
+        print_file_url: item.designUrl || '',
+        // Printify-specific fields for resubmission
+        printify_blueprint_id: item.printifyBlueprintId || null,
+        printify_variant_id: item.printifyVariantId || null,
+        waveform_style: item.waveformStyle || 'bars',
+        design_preset: item.designPreset || null,
+        product_color: item.productColor || null,
+        mockup_url: item.mockupUrl || item.thumbnailUrl || null
       }))
 
       const { error: itemsError } = await supabase
