@@ -253,9 +253,9 @@ export default function CreatePage() {
 
     const canvas = mockupRef.current.canvas
     
-    // Create a smaller thumbnail for display only
+    // Create a medium-quality thumbnail for cart display (400px)
     const thumbCanvas = document.createElement('canvas')
-    const thumbSize = 200 // Smaller thumbnail
+    const thumbSize = 400 // Larger thumbnail for better display
     const aspectRatio = canvas.width / canvas.height
     thumbCanvas.width = thumbSize
     thumbCanvas.height = thumbSize / aspectRatio
@@ -263,9 +263,12 @@ export default function CreatePage() {
     if (thumbCtx) {
       thumbCtx.drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height)
     }
-    // Use lower quality JPEG for smaller file size
-    const thumbnailUrl = thumbCanvas.toDataURL('image/jpeg', 0.4)
+    // Use PNG for better quality
+    const thumbnailUrl = thumbCanvas.toDataURL('image/png', 0.9)
 
+    // Show loading toast while uploading
+    const uploadingToast = toast.loading('Uploading design...')
+    
     // Upload high-res design to Supabase storage for Printify
     let designUrl = ''
     try {
@@ -284,11 +287,20 @@ export default function CreatePage() {
         designUrl = uploadData.artworkUrl
         console.log('[Add to Cart] Design uploaded:', designUrl)
       } else {
-        console.error('[Add to Cart] Failed to upload design')
+        const errorData = await uploadResponse.json().catch(() => ({}))
+        console.error('[Add to Cart] Failed to upload design:', errorData)
+        toast.dismiss(uploadingToast)
+        toast.error('Failed to upload design. Please try again.')
+        return
       }
     } catch (uploadError) {
       console.error('[Add to Cart] Upload error:', uploadError)
+      toast.dismiss(uploadingToast)
+      toast.error('Failed to upload design. Please try again.')
+      return
     }
+
+    toast.dismiss(uploadingToast)
 
     addItem({
       audioFileName,
@@ -301,15 +313,15 @@ export default function CreatePage() {
       size: selectedSize.label,
       customText,
       price: selectedSize.price,
-      thumbnailUrl,
-      designUrl, // Now includes the uploaded Supabase URL
+      thumbnailUrl: designUrl || thumbnailUrl, // Use uploaded URL if available
+      designUrl, // The uploaded Supabase URL
       // Printify-specific fields for order fulfillment/resubmission
       printifyBlueprintId: String(selectedProduct.blueprintId),
       printifyVariantId: selectedSize.value, // Size value like '18x24'
       waveformStyle: waveformStyle,
       designPreset: undefined, // Could add preset tracking later
       productColor: undefined, // For apparel products
-      mockupUrl: undefined, // Generated mockup URL if available
+      mockupUrl: designUrl, // Use same URL for mockup display
     })
 
     toast.success('Added to cart!', {
