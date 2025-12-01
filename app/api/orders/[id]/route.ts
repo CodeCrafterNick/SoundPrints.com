@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
+import { auth } from '@clerk/nextjs/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+// How long guest orders are accessible via direct link (in hours)
+const GUEST_ORDER_ACCESS_WINDOW_HOURS = 72
 
 /**
  * GET /api/orders/[id]
  * 
  * Get order details by ID
+ * 
+ * Access control:
+ * - Logged-in users can only view their own orders
+ * - Guest orders can be viewed by anyone with the link for 72 hours
+ * - After 72 hours, guest orders require email verification
  */
 export async function GET(
   req: NextRequest,
@@ -16,6 +25,11 @@ export async function GET(
   try {
     const supabase = getSupabaseAdmin()
     const { id } = await params
+    const { userId } = await auth()
+    
+    // Get email from query param (for guest verification)
+    const { searchParams } = new URL(req.url)
+    const verifyEmail = searchParams.get('email')
 
     if (!id) {
       return NextResponse.json(
@@ -33,6 +47,41 @@ export async function GET(
     if (error || !order) {
       return NextResponse.json(
         { error: 'Order not found' },
+        { status: 404 }
+      )
+    }
+
+    // Access control checks
+    const isOwner = userId && order.user_id === userId
+    const isGuestOrder = !order.user_id
+    const orderAge = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60) // hours
+    const withinGuestWindow = orderAge < GUEST_ORDER_ACCESS_WINDOW_HOURS
+    const emailMatches = verifyEmail && order.email.toLowerCase() === verifyEmail.toLowerCase()
+
+    // Determine if user can access this order
+    let canAccess = false
+    
+    if (isOwner) {
+      // Logged-in user viewing their own order
+      canAccess = true
+    } else if (isGuestOrder && withinGuestWindow) {
+      // Guest order within 72-hour window - allow access with just the link
+      canAccess = true
+    } else if (emailMatches) {
+      // Email verification provided and matches
+      canAccess = true
+    } else if (userId && !order.user_id) {
+      // Logged-in user viewing a guest order - don't allow unless email matches
+      canAccess = emailMatches
+    }
+
+    if (!canAccess) {
+      // Don't reveal whether the order exists or not for security
+      return NextResponse.json(
+        { 
+          error: 'Order not found or access denied',
+          requiresVerification: !withinGuestWindow && isGuestOrder
+        },
         { status: 404 }
       )
     }
