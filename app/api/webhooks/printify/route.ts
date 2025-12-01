@@ -27,7 +27,14 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
 
-    console.log('[Printify Webhook] Event received:', body.type || body.event)
+    console.log('[Printify Webhook] Event received:', JSON.stringify(body))
+
+    // Handle Printify webhook validation/ping
+    if (body.topic || !body.type && !body.event) {
+      // This is likely a validation request or a simple ping
+      console.log('[Printify Webhook] Validation/ping request received')
+      return NextResponse.json({ success: true })
+    }
 
     // Printify sends event type in 'type' or 'event' field
     const eventType = body.type || body.event
