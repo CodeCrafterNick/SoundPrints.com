@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+// Increase body size limit for audio uploads (default is 4MB)
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+}
+
+// For App Router, also export runtime and max duration
+export const runtime = 'nodejs'
+export const maxDuration = 30 // 30 seconds timeout for upload
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!

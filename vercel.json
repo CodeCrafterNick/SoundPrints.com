@@ -1,5 +1,16 @@
 {
   "framework": "nextjs",
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm build"
+  "buildCommand": "pnpm build",
+  "functions": {
+    "app/api/upload-audio/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/generate-mockup/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/pregenerate-mockups/route.ts": {
+      "maxDuration": 60
+    }
+  }
 }
