@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { getSupabaseAdmin } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,6 +14,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const supabase = getSupabaseAdmin()
     const { id } = await params
 
     if (!id) {
@@ -79,6 +80,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const supabase = getSupabaseAdmin()
     const { id } = await params
     const body = await req.json()
     const { status, tracking_number, tracking_url, printful_order_id } = body
