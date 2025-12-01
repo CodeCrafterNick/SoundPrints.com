@@ -2,6 +2,32 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { auth } from '@clerk/nextjs/server'
 import { sendOrderConfirmationEmail } from '@/lib/email'
+import { PrintifyClient } from '@/lib/printify-client'
+
+/**
+ * Map size strings to Printify variant IDs
+ * These IDs are for Printify Choice (provider 99)
+ */
+function getVariantId(blueprintId: string | number, size: string): number {
+  const variantMappings: Record<string, Record<string, number>> = {
+    '282': { // Vertical Poster - Printify Choice
+      '11x14': 43135,
+      '12x18': 43138,
+      '16x20': 43141,
+      '18x24': 43144,
+      '20x30': 43147,
+      '24x32': 43150,
+      '24x36': 43153,
+    },
+  }
+
+  const blueprintKey = String(blueprintId)
+  const normalizedSize = size.toLowerCase().replace(/[″"×\s]/g, '').replace('x', 'x')
+  
+  return variantMappings[blueprintKey]?.[normalizedSize] || 
+         variantMappings[blueprintKey]?.[size] ||
+         43144 // Default to 18x24
+}
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -158,6 +184,88 @@ export async function POST(req: NextRequest) {
     }
 
     console.log('[Create Order] Order created:', order.id)
+
+    // Submit to Printify if payment was successful
+    if (paymentIntentId && process.env.PRINTIFY_API_KEY && process.env.PRINTIFY_SHOP_ID) {
+      try {
+        console.log('[Create Order] Submitting to Printify...')
+        const printify = new PrintifyClient()
+        const shippingAddress = orderData.shippingAddress
+
+        // Upload design images to Printify
+        const uploadedImages: Record<string, string> = {}
+        
+        for (const item of items) {
+          const designUrl = item.designUrl
+          if (designUrl && !uploadedImages[designUrl]) {
+            try {
+              const uploadResult = await printify.uploadImage(
+                designUrl,
+                `order-${order.id}-${Date.now()}.png`
+              )
+              
+              // Get the preview URL from the uploaded image
+              const imageDetails = await fetch(
+                `https://api.printify.com/v1/uploads/${uploadResult.id}.json`,
+                { headers: { 'Authorization': `Bearer ${process.env.PRINTIFY_API_KEY}` } }
+              ).then(r => r.json())
+              
+              uploadedImages[designUrl] = imageDetails.preview_url || designUrl
+              console.log('[Create Order] Image uploaded:', uploadResult.id)
+            } catch (uploadError) {
+              console.error('[Create Order] Image upload failed:', uploadError)
+              uploadedImages[designUrl] = designUrl
+            }
+          }
+        }
+
+        // Build Printify order
+        const printifyOrder = {
+          external_id: order.id.toString(),
+          line_items: items.map((item: any) => ({
+            blueprint_id: parseInt(item.printifyBlueprintId) || 282,
+            print_provider_id: 99, // Printify Choice
+            variant_id: getVariantId(item.printifyBlueprintId || '282', item.size || '18x24'),
+            quantity: parseInt(item.quantity) || 1,
+            print_areas: {
+              front: uploadedImages[item.designUrl] || item.designUrl
+            }
+          })),
+          shipping_method: 1,
+          is_printify_express: false,
+          send_shipping_notification: true,
+          address_to: {
+            first_name: shippingAddress.firstName || '',
+            last_name: shippingAddress.lastName || '',
+            email: orderData.email,
+            phone: shippingAddress.phone || '',
+            country: shippingAddress.country || 'US',
+            region: shippingAddress.state || '',
+            address1: shippingAddress.address || '',
+            address2: shippingAddress.address2 || '',
+            city: shippingAddress.city || '',
+            zip: shippingAddress.zipCode || ''
+          }
+        }
+
+        const printifyResponse = await printify.createOrder(printifyOrder)
+
+        // Update order with Printify details
+        await supabase
+          .from('orders')
+          .update({
+            printify_order_id: printifyResponse.id,
+            status: 'processing',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', order.id)
+
+        console.log('[Create Order] Submitted to Printify:', printifyResponse.id)
+      } catch (printifyError) {
+        console.error('[Create Order] Printify submission failed:', printifyError)
+        // Don't fail the order - admin can retry later
+      }
+    }
 
     // Send order confirmation email
     try {
