@@ -268,6 +268,70 @@ export async function POST(req: NextRequest) {
         break
       }
 
+      case 'payment_intent.canceled': {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent
+        console.log('[Stripe Webhook] Payment canceled:', paymentIntent.id)
+
+        // Find order by payment intent and update to canceled
+        const { data: orders } = await supabase
+          .from('orders')
+          .select('id')
+          .eq('stripe_payment_intent', paymentIntent.id)
+          .limit(1)
+
+        if (orders && orders.length > 0) {
+          await supabase
+            .from('orders')
+            .update({
+              status: 'canceled',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', orders[0].id)
+          console.log('[Stripe Webhook] Order marked as canceled:', orders[0].id)
+        }
+
+        break
+      }
+
+      case 'charge.refunded': {
+        const charge = event.data.object as Stripe.Charge
+        console.log('[Stripe Webhook] Charge refunded:', charge.id)
+
+        // Find order by payment intent
+        const paymentIntentId = typeof charge.payment_intent === 'string' 
+          ? charge.payment_intent 
+          : charge.payment_intent?.id
+
+        if (paymentIntentId) {
+          const { data: orders } = await supabase
+            .from('orders')
+            .select('id, printify_order_id')
+            .eq('stripe_payment_intent', paymentIntentId)
+            .limit(1)
+
+          if (orders && orders.length > 0) {
+            // Determine if full or partial refund
+            const isFullRefund = charge.amount_refunded === charge.amount
+            
+            await supabase
+              .from('orders')
+              .update({
+                status: isFullRefund ? 'refunded' : 'partially_refunded',
+                refund_amount: charge.amount_refunded / 100, // Convert from cents
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', orders[0].id)
+            
+            console.log(`[Stripe Webhook] Order ${isFullRefund ? 'fully' : 'partially'} refunded:`, orders[0].id)
+
+            // If full refund and order is in Printify, you may want to cancel it there too
+            // (This would require calling Printify API to cancel the order)
+          }
+        }
+
+        break
+      }
+
       default:
         console.log('[Stripe Webhook] Unhandled event type:', event.type)
     }

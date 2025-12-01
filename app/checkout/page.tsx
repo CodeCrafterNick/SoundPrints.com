@@ -105,10 +105,21 @@ export default function CheckoutPage() {
   const clearCart = useCartStore((state) => state.clearCart)
   
   const [showPayment, setShowPayment] = useState(false)
+  const [billingSameAsShipping, setBillingSameAsShipping] = useState(true)
   const [shippingInfo, setShippingInfo] = useState({
     firstName: '',
     lastName: '',
     email: '',
+    phone: '',
+    address: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    country: 'US',
+  })
+  const [billingInfo, setBillingInfo] = useState({
+    firstName: '',
+    lastName: '',
     address: '',
     city: '',
     state: '',
@@ -133,13 +144,13 @@ export default function CheckoutPage() {
 
   const handleContinueToPayment = () => {
     // Validate shipping info
-    const requiredFields = ['firstName', 'lastName', 'email', 'address', 'city', 'state', 'zipCode']
-    const missingFields = requiredFields.filter(
+    const requiredShippingFields = ['firstName', 'lastName', 'email', 'phone', 'address', 'city', 'state', 'zipCode']
+    const missingShippingFields = requiredShippingFields.filter(
       (field) => !shippingInfo[field as keyof typeof shippingInfo]
     )
 
-    if (missingFields.length > 0) {
-      toast.error('Please fill in all required fields')
+    if (missingShippingFields.length > 0) {
+      toast.error('Please fill in all required shipping fields')
       return
     }
 
@@ -150,12 +161,26 @@ export default function CheckoutPage() {
       return
     }
 
+    // Validate billing info if different from shipping
+    if (!billingSameAsShipping) {
+      const requiredBillingFields = ['firstName', 'lastName', 'address', 'city', 'state', 'zipCode']
+      const missingBillingFields = requiredBillingFields.filter(
+        (field) => !billingInfo[field as keyof typeof billingInfo]
+      )
+
+      if (missingBillingFields.length > 0) {
+        toast.error('Please fill in all required billing fields')
+        return
+      }
+    }
+
     setShowPayment(true)
   }
 
   const handlePaymentSuccess = async (paymentIntentId: string) => {
     try {
       // Create order in database
+      const finalBillingAddress = billingSameAsShipping ? shippingInfo : billingInfo
       const orderData = {
         email: shippingInfo.email,
         subtotal: subtotal.toString(),
@@ -163,6 +188,7 @@ export default function CheckoutPage() {
         shipping: shipping.toString(),
         total: total.toString(),
         shippingAddress: shippingInfo,
+        billingAddress: finalBillingAddress,
       }
 
       const response = await fetch('/api/orders', {
@@ -346,6 +372,20 @@ export default function CheckoutPage() {
                   />
                 </div>
                 <div>
+                  <label className="text-sm font-medium">Phone Number *</label>
+                  <input
+                    type="tel"
+                    className="w-full mt-1 px-3 py-2 border rounded-md"
+                    placeholder="(555) 123-4567"
+                    value={shippingInfo.phone}
+                    onChange={(e) =>
+                      setShippingInfo({ ...shippingInfo, phone: e.target.value })
+                    }
+                    disabled={showPayment}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Required for delivery updates</p>
+                </div>
+                <div>
                   <label className="text-sm font-medium">Address *</label>
                   <input
                     type="text"
@@ -423,6 +463,147 @@ export default function CheckoutPage() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Billing Address Section */}
+            <div className="bg-white rounded-lg p-6 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <input
+                  type="checkbox"
+                  id="billingSame"
+                  checked={billingSameAsShipping}
+                  onChange={(e) => setBillingSameAsShipping(e.target.checked)}
+                  disabled={showPayment}
+                  className="h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
+                />
+                <label htmlFor="billingSame" className="text-sm font-medium">
+                  Billing address same as shipping
+                </label>
+              </div>
+
+              {!billingSameAsShipping && (
+                <div className="space-y-4 pt-2 border-t">
+                  <h3 className="text-lg font-semibold pt-4">Billing Address</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium">First Name *</label>
+                      <input
+                        type="text"
+                        className="w-full mt-1 px-3 py-2 border rounded-md"
+                        placeholder="John"
+                        value={billingInfo.firstName}
+                        onChange={(e) =>
+                          setBillingInfo({ ...billingInfo, firstName: e.target.value })
+                        }
+                        disabled={showPayment}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Last Name *</label>
+                      <input
+                        type="text"
+                        className="w-full mt-1 px-3 py-2 border rounded-md"
+                        placeholder="Doe"
+                        value={billingInfo.lastName}
+                        onChange={(e) =>
+                          setBillingInfo({ ...billingInfo, lastName: e.target.value })
+                        }
+                        disabled={showPayment}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Street Address *</label>
+                    <input
+                      type="text"
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="123 Main St"
+                      value={billingInfo.address1}
+                      onChange={(e) =>
+                        setBillingInfo({ ...billingInfo, address1: e.target.value })
+                      }
+                      disabled={showPayment}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Apartment, suite, etc. (optional)</label>
+                    <input
+                      type="text"
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="Apt 4B"
+                      value={billingInfo.address2}
+                      onChange={(e) =>
+                        setBillingInfo({ ...billingInfo, address2: e.target.value })
+                      }
+                      disabled={showPayment}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium">City *</label>
+                      <input
+                        type="text"
+                        className="w-full mt-1 px-3 py-2 border rounded-md"
+                        placeholder="New York"
+                        value={billingInfo.city}
+                        onChange={(e) =>
+                          setBillingInfo({ ...billingInfo, city: e.target.value })
+                        }
+                        disabled={showPayment}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium" htmlFor="billing-state-select">State *</label>
+                      <div className="mt-1">
+                        <Combobox
+                          id="billing-state-select"
+                          options={US_STATES}
+                          value={billingInfo.state}
+                          onChange={(value) =>
+                            setBillingInfo({ ...billingInfo, state: value })
+                          }
+                          placeholder="Select state..."
+                          searchPlaceholder="Search states..."
+                          emptyText="No state found."
+                          disabled={showPayment}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium">ZIP Code *</label>
+                      <input
+                        type="text"
+                        className="w-full mt-1 px-3 py-2 border rounded-md"
+                        placeholder="10001"
+                        value={billingInfo.zipCode}
+                        onChange={(e) =>
+                          setBillingInfo({ ...billingInfo, zipCode: e.target.value })
+                        }
+                        disabled={showPayment}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium" htmlFor="billing-country-select">Country *</label>
+                      <div className="mt-1">
+                        <Combobox
+                          id="billing-country-select"
+                          options={COUNTRIES}
+                          value={billingInfo.country}
+                          onChange={(value) =>
+                            setBillingInfo({ ...billingInfo, country: value })
+                          }
+                          placeholder="Select country..."
+                          searchPlaceholder="Search countries..."
+                          emptyText="No country found."
+                          disabled={showPayment}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Payment Section */}
