@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { auth } from '@clerk/nextjs/server'
+import { sendOrderConfirmationEmail } from '@/lib/email'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -23,7 +25,7 @@ export async function GET(req: NextRequest) {
       .range(offset, offset + limit - 1)
 
     if (email) {
-      query = query.eq('recipient_email', email)
+      query = query.eq('email', email)
     }
 
     const { data: orders, error, count } = await query
@@ -62,6 +64,137 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { 
         error: 'Failed to list orders',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * POST /api/orders
+ * 
+ * Create a new order in the database
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const { orderData, items, paymentIntentId } = body
+
+    // Validate required fields
+    if (!orderData || !items) {
+      return NextResponse.json(
+        { error: 'Missing required fields: orderData, items' },
+        { status: 400 }
+      )
+    }
+
+    // Get user ID from Clerk if authenticated
+    const { userId } = await auth()
+
+    console.log('[Create Order] Creating order for', orderData.email, userId ? `(User: ${userId})` : '(Guest)')
+
+    // Insert order into database
+    const { data: order, error } = await supabase
+      .from('orders')
+      .insert({
+        user_id: userId || null,
+        email: orderData.email,
+        shipping_address: orderData.shippingAddress,
+        subtotal: parseFloat(orderData.subtotal),
+        tax: parseFloat(orderData.tax),
+        shipping: parseFloat(orderData.shipping),
+        total: parseFloat(orderData.total),
+        stripe_payment_intent_id: paymentIntentId,
+        status: paymentIntentId ? 'paid' : 'pending'
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error('[Create Order] Error:', error)
+      return NextResponse.json(
+        { error: 'Failed to create order', details: error.message },
+        { status: 500 }
+      )
+    }
+
+    console.log('[Create Order] Order created:', order.id)
+
+    // Insert order items into order_items table
+    if (items && items.length > 0) {
+      const orderItems = items.map((item: any) => ({
+        order_id: order.id,
+        product_type: item.productType || 'poster',
+        size: item.size || '18x24',
+        audio_file_name: item.audioFileName || '',
+        audio_file_url: item.audioFileUrl || '',
+        waveform_color: item.waveformColor || '#000000',
+        background_color: item.backgroundColor || '#FFFFFF',
+        custom_text: item.customText || '',
+        price: parseFloat(item.price || '0'),
+        quantity: parseInt(item.quantity || '1'),
+        print_file_url: item.designUrl || ''
+      }))
+
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(orderItems)
+
+      if (itemsError) {
+        console.error('[Create Order] Error inserting items:', itemsError)
+        // Don't fail the whole order if items insert fails
+      }
+    }
+
+    console.log('[Create Order] Order created:', order.id)
+
+    // Send order confirmation email
+    try {
+      const shippingAddress = orderData.shippingAddress
+      await sendOrderConfirmationEmail({
+        orderId: order.id,
+        email: orderData.email,
+        customerName: `${shippingAddress.firstName} ${shippingAddress.lastName}`,
+        items: items.map((item: any) => ({
+          productType: item.productType || 'poster',
+          size: item.size || '18x24',
+          audioFileName: item.audioFileName,
+          price: parseFloat(item.price || '0'),
+          quantity: parseInt(item.quantity || '1'),
+          thumbnailUrl: item.thumbnailUrl
+        })),
+        subtotal: parseFloat(orderData.subtotal),
+        tax: parseFloat(orderData.tax),
+        shipping: parseFloat(orderData.shipping),
+        total: parseFloat(orderData.total),
+        shippingAddress: {
+          firstName: shippingAddress.firstName,
+          lastName: shippingAddress.lastName,
+          address: shippingAddress.address,
+          city: shippingAddress.city,
+          state: shippingAddress.state,
+          zipCode: shippingAddress.zipCode,
+          country: shippingAddress.country || 'US'
+        }
+      })
+      console.log('[Create Order] Confirmation email sent to:', orderData.email)
+    } catch (emailError) {
+      console.error('[Create Order] Failed to send confirmation email:', emailError)
+      // Don't fail the order if email fails
+    }
+
+    return NextResponse.json({
+      success: true,
+      orderId: order.id,
+      order
+    })
+
+  } catch (error) {
+    console.error('[Create Order] Error:', error)
+    return NextResponse.json(
+      { 
+        error: 'Failed to create order',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
