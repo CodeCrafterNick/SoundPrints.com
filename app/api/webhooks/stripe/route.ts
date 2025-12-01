@@ -14,42 +14,54 @@ export const dynamic = 'force-dynamic'
 
 /**
  * Map size strings to Printify variant IDs
- * These IDs are specific to each blueprint and need to be looked up from Printify
- * TODO: This should be dynamically fetched from Printify catalog
+ * These IDs are for Printify Choice (provider 99)
+ * Fetched from: /catalog/blueprints/282/print_providers/99/variants.json
  */
 function getVariantId(blueprintId: string | number, size: string): number {
-  // Default variant mapping for vertical poster (blueprint 282)
-  // You'll need to fetch actual variant IDs from Printify for each blueprint
+  // Variant mapping for Printify Choice (provider 99) - Vertical Poster (blueprint 282)
   const variantMappings: Record<string, Record<string, number>> = {
-    '282': { // Vertical Poster
-      '12x16': 49853,
-      '16x20': 49854,
-      '18x24': 49855,
-      '24x36': 49856,
-      '12" × 16"': 49853,
-      '16" × 20"': 49854,
-      '18" × 24"': 49855,
-      '24" × 36"': 49856,
-    },
-    '284': { // Horizontal Poster
-      '16x12': 49861,
-      '20x16': 49862,
-      '24x18': 49863,
-      '36x24': 49864,
-      '16" × 12"': 49861,
-      '20" × 16"': 49862,
-      '24" × 18"': 49863,
-      '36" × 24"': 49864,
+    '282': { // Vertical Poster - Printify Choice
+      '11x14': 43135,
+      '12x18': 43138,
+      '16x20': 43141,
+      '18x24': 43144,
+      '20x30': 43147,
+      '24x32': 43150,
+      '24x36': 43153,
+      // Glossy variants
+      '11x14-glossy': 43136,
+      '12x18-glossy': 43139,
+      '16x20-glossy': 43142,
+      '18x24-glossy': 43145,
+      // With inch marks
+      '11″ x 14″': 43135,
+      '12″ x 18″': 43138,
+      '16″ x 20″': 43141,
+      '18″ x 24″': 43144,
+      '20″ x 30″': 43147,
+      '24″ x 32″': 43150,
+      '24″ x 36″': 43153,
+      // Alternate formats
+      '11" x 14"': 43135,
+      '12" x 18"': 43138,
+      '16" x 20"': 43141,
+      '18" x 24"': 43144,
+      '20" x 30"': 43147,
+      '24" x 32"': 43150,
+      '24" x 36"': 43153,
     },
     // Add more blueprints as needed
   }
 
   const blueprintKey = String(blueprintId)
-  const sizeKey = size.replace(/[″"]/g, '"').trim()
+  const sizeKey = size.replace(/[″"]/g, '"').toLowerCase().replace(/\s+/g, '').trim()
+  const normalizedSize = size.toLowerCase().replace(/[″" ×x]/g, '').trim()
   
+  // Try various matching strategies
   return variantMappings[blueprintKey]?.[sizeKey] || 
-         variantMappings[blueprintKey]?.[size] || 
-         49855 // Default to 18x24 variant
+         variantMappings[blueprintKey]?.[size] ||
+         variantMappings[blueprintKey]?.[normalizedSize] ||
+         43144 // Default to 18x24 matte variant
 }
 
 /**
@@ -140,14 +152,25 @@ export async function POST(req: NextRequest) {
               for (const item of orderItems) {
                 if (item.print_file_url && !uploadedImages[item.print_file_url]) {
                   try {
+                    // Upload the image
                     const uploadResult = await printify.uploadImage(
                       item.print_file_url,
                       `order-${orderId}-${item.id}.png`
                     )
-                    uploadedImages[item.print_file_url] = uploadResult.id
-                    console.log('[Stripe Webhook] Image uploaded to Printify:', uploadResult.id)
+                    
+                    // Get the image details to retrieve the preview_url
+                    // For print_areas, Printify requires the actual image URL, not the ID
+                    const imageDetails = await fetch(
+                      `https://api.printify.com/v1/uploads/${uploadResult.id}.json`,
+                      { headers: { 'Authorization': `Bearer ${process.env.PRINTIFY_API_KEY}` } }
+                    ).then(r => r.json())
+                    
+                    uploadedImages[item.print_file_url] = imageDetails.preview_url || item.print_file_url
+                    console.log('[Stripe Webhook] Image uploaded to Printify:', uploadResult.id, '-> URL:', uploadedImages[item.print_file_url])
                   } catch (uploadError) {
                     console.error('[Stripe Webhook] Image upload failed:', uploadError)
+                    // Fall back to original URL
+                    uploadedImages[item.print_file_url] = item.print_file_url
                   }
                 }
               }
@@ -158,7 +181,8 @@ export async function POST(req: NextRequest) {
               external_id: orderId,
               line_items: (orderItems || []).map((item: any) => ({
                 blueprint_id: parseInt(item.printify_blueprint_id) || 282, // Default to vertical poster
-                variant_id: getVariantId(item.printify_blueprint_id, item.size), // Map size to variant
+                print_provider_id: 99, // Printify Choice - works for all blueprints
+                variant_id: getVariantId(item.printify_blueprint_id || '282', item.size), // Map size to variant
                 quantity: item.quantity || 1,
                 print_areas: {
                   front: uploadedImages[item.print_file_url] || item.print_file_url

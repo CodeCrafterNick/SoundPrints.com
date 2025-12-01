@@ -56,7 +56,7 @@ export async function GET(
     const isGuestOrder = !order.user_id
     const orderAge = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60) // hours
     const withinGuestWindow = orderAge < GUEST_ORDER_ACCESS_WINDOW_HOURS
-    const emailMatches = verifyEmail && order.email.toLowerCase() === verifyEmail.toLowerCase()
+    const emailMatches = Boolean(verifyEmail && order.email.toLowerCase() === verifyEmail.toLowerCase())
 
     // Determine if user can access this order
     let canAccess = false
