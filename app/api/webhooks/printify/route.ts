@@ -100,13 +100,21 @@ export async function POST(req: NextRequest) {
     }
 
     switch (eventType) {
+      case 'order:shipment:created':
       case 'order:shipped':
       case 'order.shipped': {
         updates.status = 'shipped'
         
-        // Extract tracking info
+        // Extract tracking info from the resource data
+        // Printify sends: { carrier: { code, tracking_number, tracking_url }, shipped_at, skus }
+        const carrier = resource.carrier || {}
         const shipments = resource.shipments || []
-        if (shipments.length > 0) {
+        
+        if (carrier.tracking_number) {
+          updates.tracking_number = carrier.tracking_number
+          updates.tracking_url = carrier.tracking_url
+          updates.carrier = carrier.code
+        } else if (shipments.length > 0) {
           const shipment = shipments[0]
           updates.tracking_number = shipment.tracking_number || shipment.tracking_id
           updates.tracking_url = shipment.tracking_url
@@ -116,14 +124,14 @@ export async function POST(req: NextRequest) {
         console.log('[Printify Webhook] Order shipped:', printifyOrderId, updates.tracking_number)
 
         // Send shipping email if we have tracking info
-        if (updates.tracking_number && updates.tracking_url) {
+        if (updates.tracking_number) {
           try {
             await sendShippingConfirmationEmail({
               orderId: order.id,
               email: order.email,
               customerName,
               trackingNumber: updates.tracking_number,
-              trackingUrl: updates.tracking_url,
+              trackingUrl: updates.tracking_url || `https://www.google.com/search?q=${updates.carrier}+${updates.tracking_number}`,
               carrier: updates.carrier
             })
             console.log('[Printify Webhook] Shipping email sent to:', order.email)
@@ -134,6 +142,7 @@ export async function POST(req: NextRequest) {
         break
       }
 
+      case 'order:shipment:delivered':
       case 'order:completed':
       case 'order.completed': {
         updates.status = 'delivered'
