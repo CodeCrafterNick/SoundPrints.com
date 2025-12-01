@@ -185,13 +185,16 @@ function OrderConfirmationContent() {
           <div className="bg-muted/50 rounded-lg p-6 mb-8 text-left">
             <h3 className="font-semibold mb-4">Your Custom SoundPrint{order.items.length > 1 ? 's' : ''}</h3>
             <div className="space-y-6 mb-4">
-              {order.items.map((item: any, index: number) => (
+              {order.items.map((item: any, index: number) => {
+                // Get the best available image URL
+                const imageUrl = item.print_file_url || item.mockup_url || item.thumbnailUrl
+                return (
                 <div key={index} className="space-y-3">
-                  {item.print_file_url && (
+                  {imageUrl && (
                     <div className="rounded-lg overflow-hidden border bg-white dark:bg-gray-900">
                       <img 
-                        src={item.print_file_url} 
-                        alt={`SoundPrint - ${item.audio_file_name}`}
+                        src={imageUrl} 
+                        alt={`SoundPrint - ${item.audio_file_name || item.product_type}`}
                         className="w-full h-auto"
                       />
                     </div>
@@ -209,7 +212,7 @@ function OrderConfirmationContent() {
                     <p className="text-sm font-medium">${(item.price * item.quantity).toFixed(2)}</p>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
             
             <div className="border-t pt-3 space-y-2">

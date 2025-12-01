@@ -181,6 +181,11 @@ export default function CheckoutPage() {
             price: item.price.toString(),
             quantity: item.quantity,
             designUrl: item.designUrl,
+            thumbnailUrl: item.thumbnailUrl,
+            // Printify fields
+            printifyBlueprintId: item.printifyBlueprintId,
+            printifyVariantId: item.printifyVariantId,
+            waveformStyle: item.waveformStyle,
           })),
           paymentIntentId,
         }),
