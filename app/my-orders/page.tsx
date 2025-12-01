@@ -18,6 +18,7 @@ interface Order {
   shipping: number
   total: number
   created_at: string
+  printify_mockups?: string[]
 }
 
 export default function MyOrdersPage() {
@@ -143,20 +144,32 @@ export default function MyOrdersPage() {
               {orders.map((order) => (
                 <div key={order.id} className="bg-card rounded-lg border p-6 hover:shadow-lg transition-shadow">
                   <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-semibold">Order #{order.id.slice(0, 8)}</h3>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                          {order.status}
-                        </span>
+                    <div className="flex gap-4">
+                      {/* Mockup thumbnail */}
+                      {order.printify_mockups && order.printify_mockups[0] && (
+                        <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border bg-white">
+                          <img 
+                            src={order.printify_mockups[0]} 
+                            alt="Order preview"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+                      <div>
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="font-semibold">Order #{order.id.slice(0, 8)}</h3>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
+                            {order.status}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(order.created_at).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </p>
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(order.created_at).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                        })}
-                      </p>
                     </div>
                     <div className="text-right">
                       <p className="text-2xl font-bold">${order.total.toFixed(2)}</p>

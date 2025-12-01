@@ -22,6 +22,7 @@ interface OrderDetails {
   tracking_number?: string
   tracking_url?: string
   printful_order_id?: string
+  printify_mockups?: string[]
   created_at: string
   updated_at: string
 }
@@ -34,6 +35,7 @@ function OrderConfirmationContent() {
   const [order, setOrder] = useState<OrderDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedMockupIndex, setSelectedMockupIndex] = useState(0)
 
   useEffect(() => {
     if (!orderId) {
@@ -182,12 +184,65 @@ function OrderConfirmationContent() {
             </div>
           )}
 
+          {/* Printify Mockup Gallery */}
+          {order.printify_mockups && order.printify_mockups.length > 0 && (
+            <div className="bg-muted/50 rounded-lg p-6 mb-8 text-left">
+              <h3 className="font-semibold mb-4">Preview Your Print</h3>
+              <div className="space-y-4">
+                {/* Main mockup image */}
+                <div className="rounded-lg overflow-hidden border bg-white dark:bg-gray-900 aspect-[4/3]">
+                  <img 
+                    src={order.printify_mockups[selectedMockupIndex]} 
+                    alt={`Preview ${selectedMockupIndex + 1}`}
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                
+                {/* Mockup thumbnails */}
+                {order.printify_mockups.length > 1 && (
+                  <div className="flex gap-2 overflow-x-auto pb-2">
+                    {order.printify_mockups.map((mockup, index) => {
+                      // Get label from URL query param
+                      const url = new URL(mockup)
+                      const label = url.searchParams.get('camera_label')?.replace('-', ' ') || `View ${index + 1}`
+                      
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => setSelectedMockupIndex(index)}
+                          className={`flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${
+                            selectedMockupIndex === index 
+                              ? 'border-primary ring-2 ring-primary/20' 
+                              : 'border-transparent hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="w-20 h-20 bg-white dark:bg-gray-900">
+                            <img 
+                              src={mockup} 
+                              alt={label}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="text-[10px] text-center py-1 bg-gray-50 dark:bg-gray-800 capitalize">
+                            {label}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="bg-muted/50 rounded-lg p-6 mb-8 text-left">
             <h3 className="font-semibold mb-4">Your Custom SoundPrint{order.items.length > 1 ? 's' : ''}</h3>
             <div className="space-y-6 mb-4">
               {order.items.map((item: any, index: number) => {
-                // Get the best available image URL
-                const imageUrl = item.print_file_url || item.mockup_url || item.thumbnailUrl
+                // Get the best available image URL (skip if we have Printify mockups)
+                const imageUrl = !order.printify_mockups?.length 
+                  ? (item.print_file_url || item.mockup_url || item.thumbnailUrl)
+                  : null
                 return (
                 <div key={index} className="space-y-3">
                   {imageUrl && (

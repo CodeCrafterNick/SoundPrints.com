@@ -250,11 +250,42 @@ export async function POST(req: NextRequest) {
 
         const printifyResponse = await printify.createOrder(printifyOrder)
 
-        // Update order with Printify details
+        // Get Printify product ID from the order response to fetch mockups
+        let printifyMockups: string[] = []
+        const firstLineItem = printifyResponse.line_items?.[0]
+        const productId = firstLineItem?.product_id
+        
+        if (productId) {
+          try {
+            // Wait a moment for Printify to generate mockups
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            
+            // Fetch the product to get mockup images
+            const productResponse = await fetch(
+              `https://api.printify.com/v1/shops/${process.env.PRINTIFY_SHOP_ID}/products/${productId}.json`,
+              { headers: { 'Authorization': `Bearer ${process.env.PRINTIFY_API_KEY}` } }
+            )
+            
+            if (productResponse.ok) {
+              const product = await productResponse.json()
+              if (product.images && Array.isArray(product.images)) {
+                // Extract mockup URLs with camera labels
+                printifyMockups = product.images.map((img: any) => img.src)
+                console.log('[Create Order] Fetched', printifyMockups.length, 'Printify mockups')
+              }
+            }
+          } catch (mockupError) {
+            console.error('[Create Order] Failed to fetch Printify mockups:', mockupError)
+          }
+        }
+
+        // Update order with Printify details and mockups
         await supabase
           .from('orders')
           .update({
             printify_order_id: printifyResponse.id,
+            printify_product_id: productId || null,
+            printify_mockups: printifyMockups.length > 0 ? printifyMockups : null,
             status: 'processing',
             updated_at: new Date().toISOString()
           })
