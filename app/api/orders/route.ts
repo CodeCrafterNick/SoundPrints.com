@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { auth } from '@clerk/nextjs/server'
 import { sendOrderConfirmationEmail } from '@/lib/email'
 
@@ -13,6 +13,7 @@ export const dynamic = 'force-dynamic'
  */
 export async function GET(req: NextRequest) {
   try {
+    const supabase = getSupabaseAdmin()
     const { searchParams } = new URL(req.url)
     const email = searchParams.get('email')
     const limit = parseInt(searchParams.get('limit') || '50')
@@ -78,6 +79,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    const supabase = getSupabaseAdmin()
     const body = await req.json()
     const { orderData, items, paymentIntentId } = body
 
