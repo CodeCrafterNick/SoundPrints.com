@@ -25,10 +25,12 @@ interface PrintifyProduct {
 interface PrintifyOrder {
   external_id: string
   line_items: Array<{
-    product_id: string
+    product_id?: string
+    blueprint_id?: number
+    print_provider_id?: number
     variant_id: number
     quantity: number
-    print_areas: {
+    print_areas?: {
       front?: string
       back?: string
     }
