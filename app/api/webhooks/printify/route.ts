@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { sendShippingConfirmationEmail, sendOrderStatusEmail } from '@/lib/email'
 
 export const runtime = 'nodejs'
@@ -22,6 +22,8 @@ export const dynamic = 'force-dynamic'
  * @see https://developers.printify.com/#webhooks
  */
 export async function POST(req: NextRequest) {
+  const supabase = getSupabaseAdmin()
+  
   try {
     const body = await req.json()
 
