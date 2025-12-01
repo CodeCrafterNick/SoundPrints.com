@@ -248,10 +248,11 @@ export default function CreatePage() {
   }
 
   // Add to cart handler
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (!audioUrl || !mockupRef.current?.canvas) return
 
     const canvas = mockupRef.current.canvas
+    
     // Create a smaller thumbnail for display only
     const thumbCanvas = document.createElement('canvas')
     const thumbSize = 200 // Smaller thumbnail
@@ -265,6 +266,30 @@ export default function CreatePage() {
     // Use lower quality JPEG for smaller file size
     const thumbnailUrl = thumbCanvas.toDataURL('image/jpeg', 0.4)
 
+    // Upload high-res design to Supabase storage for Printify
+    let designUrl = ''
+    try {
+      // Get the high-res print file from the canvas
+      const printFileDataUrl = canvas.toDataURL('image/png', 1.0)
+      
+      // Upload to Supabase
+      const uploadResponse = await fetch('/api/upload-artwork', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ artworkDataUrl: printFileDataUrl })
+      })
+      
+      if (uploadResponse.ok) {
+        const uploadData = await uploadResponse.json()
+        designUrl = uploadData.artworkUrl
+        console.log('[Add to Cart] Design uploaded:', designUrl)
+      } else {
+        console.error('[Add to Cart] Failed to upload design')
+      }
+    } catch (uploadError) {
+      console.error('[Add to Cart] Upload error:', uploadError)
+    }
+
     addItem({
       audioFileName,
       audioFileUrl: audioUrl,
@@ -277,6 +302,7 @@ export default function CreatePage() {
       customText,
       price: selectedSize.price,
       thumbnailUrl,
+      designUrl, // Now includes the uploaded Supabase URL
       // Printify-specific fields for order fulfillment/resubmission
       printifyBlueprintId: String(selectedProduct.blueprintId),
       printifyVariantId: selectedSize.value, // Size value like '18x24'
@@ -284,7 +310,6 @@ export default function CreatePage() {
       designPreset: undefined, // Could add preset tracking later
       productColor: undefined, // For apparel products
       mockupUrl: undefined, // Generated mockup URL if available
-      // designUrl is generated on-demand at checkout, not stored
     })
 
     toast.success('Added to cart!', {

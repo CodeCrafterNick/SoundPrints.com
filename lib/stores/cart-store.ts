@@ -108,13 +108,13 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: 'soundprints-cart',
-      // Only persist essential data, exclude large image data URLs and UI state
+      // Only persist essential data, exclude UI state
       partialize: (state) => ({
         items: state.items.map(item => ({
           ...item,
-          // Don't persist large image data - use compressed thumbnail only
-          designUrl: undefined,
-          // Keep thumbnail but ensure it's compressed
+          // Keep designUrl - it's now a Supabase URL, not a large base64 string
+          designUrl: item.designUrl,
+          // Keep thumbnail for display
           thumbnailUrl: item.thumbnailUrl,
         })),
         // Don't persist modal open state
