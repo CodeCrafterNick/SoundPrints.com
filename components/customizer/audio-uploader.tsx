@@ -5,8 +5,9 @@ import { useDropzone } from 'react-dropzone'
 import { Upload, FileAudio, X, Loader2, Play, Pause, RotateCcw } from 'lucide-react'
 import { useCustomizerStore } from '@/lib/stores/customizer-store'
 import { Button } from '@/components/ui/button'
+import { uploadAudioFile } from '@/lib/supabase'
 
-const MAX_FILE_SIZE = 25 * 1024 * 1024 // 25MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB (Supabase free tier limit)
 
 export function AudioUploader() {
   const [isLoading, setIsLoading] = useState(false)
@@ -92,26 +93,12 @@ export function AudioUploader() {
       if (file.size <= MAX_FILE_SIZE) {
         setIsLoading(true)
         try {
-          // Upload to Supabase Storage
-          const formData = new FormData()
-          formData.append('file', file)
-          
-          const response = await fetch('/api/upload-audio', {
-            method: 'POST',
-            body: formData,
-          })
-          
-          const responseData = await response.json()
-          
-          if (!response.ok) {
-            throw new Error(responseData.error || 'Failed to upload audio')
-          }
-          
-          const { url } = responseData
+          // Upload directly to Supabase Storage (bypasses Vercel's 4.5MB limit)
+          const { fileUrl } = await uploadAudioFile(file)
           
           // Store both the file (for metadata) and the permanent URL
           setAudioFile(file)
-          setAudioUrl(url) // Set the permanent Supabase URL
+          setAudioUrl(fileUrl) // Set the permanent Supabase URL
         } catch (error) {
           console.error('Error uploading audio:', error)
           const errorMessage = error instanceof Error ? error.message : 'Failed to upload audio file. Please try again.'
@@ -120,7 +107,7 @@ export function AudioUploader() {
           setIsLoading(false)
         }
       } else {
-        alert('File is too large. Maximum size is 25MB.')
+        alert('File is too large. Maximum size is 50MB.')
       }
     }
   }, [setAudioFile, setAudioUrl])
@@ -298,7 +285,7 @@ export function AudioUploader() {
         Drag and drop or click to browse
       </p>
       <p className="text-xs text-muted-foreground">
-        Supports MP3, WAV, FLAC, M4A, OGG (max 25MB)
+        Supports MP3, WAV, FLAC, M4A, OGG (max 50MB)
       </p>
     </div>
   )
