@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useUser } from '@clerk/nextjs'
 import { useCartStore } from '@/lib/stores/cart-store'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -96,6 +97,7 @@ const COUNTRIES = [
 
 export default function CheckoutPage() {
   const router = useRouter()
+  const { user, isLoaded } = useUser()
   const items = useCartStore((state) => state.items)
   const getTotal = useCartStore((state) => state.getTotal)
   const removeItem = useCartStore((state) => state.removeItem)
@@ -118,6 +120,16 @@ export default function CheckoutPage() {
   const tax = subtotal * 0.08 // 8% tax
   const shipping = subtotal > 50 ? 0 : 5.99
   const total = subtotal + tax + shipping
+
+  // Auto-populate email from logged-in user
+  useEffect(() => {
+    if (isLoaded && user?.primaryEmailAddress?.emailAddress && !shippingInfo.email) {
+      setShippingInfo(prev => ({
+        ...prev,
+        email: user.primaryEmailAddress!.emailAddress
+      }))
+    }
+  }, [isLoaded, user])
 
   const handleContinueToPayment = () => {
     // Validate shipping info

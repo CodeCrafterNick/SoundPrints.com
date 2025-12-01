@@ -97,10 +97,11 @@ export async function POST(req: NextRequest) {
     console.log('[Create Order] Creating order for', orderData.email, userId ? `(User: ${userId})` : '(Guest)')
 
     // Insert order into database
+    // Note: user_id is set to null because Clerk IDs are strings but DB column may be UUID
+    // TODO: Run migration to change user_id to VARCHAR(255) to support Clerk IDs
     const { data: order, error } = await supabase
       .from('orders')
       .insert({
-        user_id: userId || null,
         email: orderData.email,
         shipping_address: orderData.shippingAddress,
         subtotal: parseFloat(orderData.subtotal),
