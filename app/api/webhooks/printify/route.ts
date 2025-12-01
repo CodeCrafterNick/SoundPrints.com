@@ -30,22 +30,26 @@ export async function POST(req: NextRequest) {
     console.log('[Printify Webhook] Event received:', JSON.stringify(body))
 
     // Handle Printify webhook validation/ping
-    if (body.topic || !body.type && !body.event) {
-      // This is likely a validation request or a simple ping
-      console.log('[Printify Webhook] Validation/ping request received')
+    // Printify sends { topic: "order:shipped" } during validation
+    if (body.topic && !body.resource && !body.data) {
+      console.log('[Printify Webhook] Validation request for topic:', body.topic)
       return NextResponse.json({ success: true })
     }
 
     // Printify sends event type in 'type' or 'event' field
-    const eventType = body.type || body.event
+    const eventType = body.type || body.event || body.topic
     const resource = body.resource || body.data
 
-    if (!eventType || !resource) {
-      console.error('[Printify Webhook] Invalid payload:', body)
-      return NextResponse.json(
-        { error: 'Invalid webhook payload' },
-        { status: 400 }
-      )
+    if (!eventType) {
+      // Still acknowledge to prevent retries
+      console.log('[Printify Webhook] No event type, acknowledging')
+      return NextResponse.json({ success: true })
+    }
+
+    if (!resource) {
+      // Validation request or ping - acknowledge it
+      console.log('[Printify Webhook] No resource data, likely validation')
+      return NextResponse.json({ success: true })
     }
 
     // Get Printify order ID from resource
