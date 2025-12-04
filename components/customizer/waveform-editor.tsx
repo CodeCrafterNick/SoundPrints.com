@@ -349,15 +349,28 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle>(function Waveform
     if (!stops || stops.length === 0) return null
     
     // Parse direction to determine gradient coordinates
+    // Support both CSS-style (to right, to bottom) and store values (horizontal, vertical, diagonal)
     let x0 = 0, y0 = 0, x1 = 0, y1 = height
-    if (direction.includes('right')) {
+    if (direction === 'horizontal' || direction.includes('right')) {
+      // Left to right
       x0 = 0; y0 = height / 2; x1 = width; y1 = height / 2
     } else if (direction.includes('left')) {
+      // Right to left
       x0 = width; y0 = height / 2; x1 = 0; y1 = height / 2
+    } else if (direction === 'vertical' || direction.includes('bottom')) {
+      // Top to bottom (default)
+      x0 = width / 2; y0 = 0; x1 = width / 2; y1 = height
     } else if (direction.includes('top')) {
+      // Bottom to top
       x0 = width / 2; y0 = height; x1 = width / 2; y1 = 0
+    } else if (direction === 'diagonal') {
+      // Top-left to bottom-right
+      x0 = 0; y0 = 0; x1 = width; y1 = height
+    } else if (direction === 'radial') {
+      // For radial, we'll use a horizontal gradient as fallback (radial not supported in createLinearGradient)
+      x0 = 0; y0 = height / 2; x1 = width; y1 = height / 2
     } else {
-      // Default: to bottom
+      // Default: to bottom (vertical)
       x0 = width / 2; y0 = 0; x1 = width / 2; y1 = height
     }
     

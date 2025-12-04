@@ -2,7 +2,7 @@
 
 import { useCallback, useState, useRef, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { Upload, FileAudio, X, Loader2, Play, Pause, RotateCcw } from 'lucide-react'
+import { Upload, FileAudio, X, Loader2, Play, Pause, RotateCcw, Square } from 'lucide-react'
 import { useCustomizerStore } from '@/lib/stores/customizer-store'
 import { Button } from '@/components/ui/button'
 import { uploadAudioFile } from '@/lib/supabase'
@@ -11,19 +11,23 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB (Supabase free tier limit)
 
 export function AudioUploader() {
   const [isLoading, setIsLoading] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(false)
+  const [isPlayingSelection, setIsPlayingSelection] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const playbackIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   
   const audioFile = useCustomizerStore((state) => state.audioFile)
   const audioFileName = useCustomizerStore((state) => state.audioFileName)
   const audioFileSize = useCustomizerStore((state) => state.audioFileSize)
   const audioUrl = useCustomizerStore((state) => state.audioUrl)
+  const selectedRegion = useCustomizerStore((state) => state.selectedRegion)
+  const audioDuration = useCustomizerStore((state) => state.audioDuration)
   const waveformColor = useCustomizerStore((state) => state.waveformColor)
   const backgroundColor = useCustomizerStore((state) => state.backgroundColor)
   const setAudioFile = useCustomizerStore((state) => state.setAudioFile)
   const setAudioUrl = useCustomizerStore((state) => state.setAudioUrl)
+  const setSelectedRegion = useCustomizerStore((state) => state.setSelectedRegion)
   const reset = useCustomizerStore((state) => state.reset)
 
   // Initialize audio element when URL changes
@@ -37,37 +41,95 @@ export function AudioUploader() {
       
       const audio = audioRef.current
       
-      audio.addEventListener('loadedmetadata', () => {
+      const handleLoadedMetadata = () => {
         setDuration(audio.duration)
-      })
+      }
       
-      audio.addEventListener('timeupdate', () => {
+      const handleTimeUpdate = () => {
         setCurrentTime(audio.currentTime)
-      })
+      }
       
-      audio.addEventListener('ended', () => {
-        setIsPlaying(false)
-        setCurrentTime(0)
-      })
+      const handleEnded = () => {
+        setIsPlayingSelection(false)
+        setCurrentTime(selectedRegion?.start ?? 0)
+        if (playbackIntervalRef.current) {
+          clearInterval(playbackIntervalRef.current)
+          playbackIntervalRef.current = null
+        }
+      }
+      
+      audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.addEventListener('timeupdate', handleTimeUpdate)
+      audio.addEventListener('ended', handleEnded)
       
       return () => {
         audio.pause()
-        audio.removeEventListener('loadedmetadata', () => {})
-        audio.removeEventListener('timeupdate', () => {})
-        audio.removeEventListener('ended', () => {})
+        audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+        audio.removeEventListener('timeupdate', handleTimeUpdate)
+        audio.removeEventListener('ended', handleEnded)
+        if (playbackIntervalRef.current) {
+          clearInterval(playbackIntervalRef.current)
+          playbackIntervalRef.current = null
+        }
       }
     }
-  }, [audioUrl])
+  }, [audioUrl, selectedRegion?.start])
 
-  const togglePlay = () => {
+  // Stop playback when reaching end of selected region
+  useEffect(() => {
+    if (isPlayingSelection && audioRef.current && selectedRegion) {
+      playbackIntervalRef.current = setInterval(() => {
+        if (audioRef.current && audioRef.current.currentTime >= selectedRegion.end) {
+          audioRef.current.pause()
+          audioRef.current.currentTime = selectedRegion.start
+          setIsPlayingSelection(false)
+          if (playbackIntervalRef.current) {
+            clearInterval(playbackIntervalRef.current)
+            playbackIntervalRef.current = null
+          }
+        }
+      }, 50)
+    }
+    
+    return () => {
+      if (playbackIntervalRef.current) {
+        clearInterval(playbackIntervalRef.current)
+        playbackIntervalRef.current = null
+      }
+    }
+  }, [isPlayingSelection, selectedRegion])
+
+  const playSelection = () => {
+    if (!audioRef.current || !selectedRegion) return
+    
+    // Start from the beginning of the selection
+    audioRef.current.currentTime = selectedRegion.start
+    audioRef.current.play()
+    setIsPlayingSelection(true)
+  }
+
+  const stopSelection = () => {
     if (!audioRef.current) return
     
-    if (isPlaying) {
-      audioRef.current.pause()
-    } else {
-      audioRef.current.play()
+    audioRef.current.pause()
+    if (selectedRegion) {
+      audioRef.current.currentTime = selectedRegion.start
     }
-    setIsPlaying(!isPlaying)
+    setIsPlayingSelection(false)
+  }
+
+  const resetSelection = () => {
+    if (!audioDuration) return
+    
+    // Stop playback if playing
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+    }
+    setIsPlayingSelection(false)
+    
+    // Reset selection to full audio duration
+    setSelectedRegion({ start: 0, end: audioDuration })
   }
 
   const handleReset = () => {
@@ -75,9 +137,13 @@ export function AudioUploader() {
       audioRef.current.pause()
       audioRef.current = null
     }
-    setIsPlaying(false)
+    setIsPlayingSelection(false)
     setCurrentTime(0)
     setDuration(0)
+    if (playbackIntervalRef.current) {
+      clearInterval(playbackIntervalRef.current)
+      playbackIntervalRef.current = null
+    }
     reset()
   }
 
@@ -178,20 +244,33 @@ export function AudioUploader() {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              {/* Play/Pause Button */}
+              {/* Play/Stop Selection Button */}
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={togglePlay}
+                onClick={isPlayingSelection ? stopSelection : playSelection}
                 className="h-8 w-8 hover:bg-white/10"
                 style={{ color: waveformColor }}
-                title={isPlaying ? 'Pause' : 'Play'}
+                title={isPlayingSelection ? 'Stop' : 'Play selection'}
+                disabled={!selectedRegion}
               >
-                {isPlaying ? (
-                  <Pause className="h-4 w-4" />
+                {isPlayingSelection ? (
+                  <Square className="h-4 w-4" />
                 ) : (
                   <Play className="h-4 w-4" />
                 )}
+              </Button>
+              {/* Reset Selection Button */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={resetSelection}
+                className="h-8 w-8 hover:bg-white/10"
+                style={{ color: waveformColor }}
+                title="Reset selection to full audio"
+                disabled={!audioDuration}
+              >
+                <RotateCcw className="h-4 w-4" />
               </Button>
               {/* Remove Button */}
               <Button
@@ -207,8 +286,32 @@ export function AudioUploader() {
             </div>
           </div>
           
-          {/* Progress bar */}
-          {duration > 0 && (
+          {/* Selection info and progress bar */}
+          {selectedRegion && audioDuration > 0 && (
+            <div className="mt-3 space-y-1">
+              {/* Selection range indicator */}
+              <div className="flex items-center justify-between text-[10px]" style={{ color: mutedTextColor }}>
+                <span>Selection: {formatTime(selectedRegion.start)} - {formatTime(selectedRegion.end)}</span>
+                <span>({formatTime(selectedRegion.end - selectedRegion.start)})</span>
+              </div>
+              {/* Progress bar showing playback within selection */}
+              <div 
+                className="w-full h-1.5 rounded-full overflow-hidden"
+                style={{ backgroundColor: waveformColor + '30' }}
+              >
+                <div 
+                  className="h-full rounded-full transition-all"
+                  style={{ 
+                    width: `${Math.max(0, Math.min(100, ((currentTime - selectedRegion.start) / (selectedRegion.end - selectedRegion.start)) * 100))}%`,
+                    backgroundColor: waveformColor
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          
+          {/* Fallback for when there's no selection but we have duration */}
+          {!selectedRegion && duration > 0 && (
             <div className="mt-3 space-y-1">
               <div 
                 className="w-full h-1.5 rounded-full overflow-hidden"
@@ -238,15 +341,7 @@ export function AudioUploader() {
             className="flex-1"
           >
             <Upload className="mr-2 h-4 w-4" />
-            Replace
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleReset}
-            className="px-3"
-            title="Reset and start over"
-          >
-            <RotateCcw className="h-4 w-4" />
+            Replace Audio
           </Button>
         </div>
       </div>

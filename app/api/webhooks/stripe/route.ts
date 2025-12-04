@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { PrintifyClient } from '@/lib/printify-client'
+import crypto from 'crypto'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-10-29.clover'
@@ -135,6 +136,66 @@ export async function POST(req: NextRequest) {
           .select('*')
           .eq('order_id', orderId)
 
+        // Process digital download items - generate download tokens
+        const digitalDownloads: { itemId: string; token: string; downloadUrl: string; expiresAt: string }[] = []
+        
+        if (orderItems && order) {
+          const digitalItems = orderItems.filter((item: { product_type?: string }) => 
+            item.product_type === 'digital-download'
+          )
+          
+          for (const item of digitalItems) {
+            // Generate secure token
+            const token = crypto.randomBytes(32).toString('hex')
+            const expiresAt = new Date()
+            expiresAt.setHours(expiresAt.getHours() + 24)
+            
+            // Store the download token
+            const { error: tokenError } = await supabase
+              .from('download_tokens')
+              .insert({
+                token,
+                order_id: orderId,
+                order_item_id: item.id,
+                design_url: item.print_file_url || item.design_url || '',
+                email: order.email || order.recipient_email || '',
+                expires_at: expiresAt.toISOString(),
+                download_count: 0,
+                max_downloads: 5
+              })
+            
+            if (!tokenError) {
+              const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://soundprints.com'
+              digitalDownloads.push({
+                itemId: item.id,
+                token,
+                downloadUrl: `${baseUrl}/api/downloads/${token}`,
+                expiresAt: expiresAt.toISOString()
+              })
+              console.log('[Stripe Webhook] Generated download token for digital item:', item.id)
+            } else {
+              console.error('[Stripe Webhook] Failed to create download token:', tokenError)
+            }
+          }
+          
+          // If there are digital downloads, send an email with the links
+          if (digitalDownloads.length > 0 && (order.email || order.recipient_email)) {
+            // Store the download URLs in the order for reference
+            await supabase
+              .from('orders')
+              .update({
+                digital_download_urls: digitalDownloads,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', orderId)
+            
+            console.log('[Stripe Webhook] Digital download links generated:', digitalDownloads.length)
+            
+            // TODO: Send email with download links
+            // This would integrate with the email service
+          }
+        }
+
         // Submit order to Printify if API key is configured
         if (process.env.PRINTIFY_API_KEY && process.env.PRINTIFY_SHOP_ID && order) {
           try {
@@ -176,51 +237,60 @@ export async function POST(req: NextRequest) {
               }
             }
 
-            // Build Printify order
-            const printifyOrder = {
-              external_id: orderId,
-              line_items: (orderItems || []).map((item: any) => ({
-                blueprint_id: parseInt(item.printify_blueprint_id) || 282, // Default to vertical poster
-                print_provider_id: 99, // Printify Choice - works for all blueprints
-                variant_id: getVariantId(item.printify_blueprint_id || '282', item.size), // Map size to variant
-                quantity: item.quantity || 1,
-                print_areas: {
-                  front: uploadedImages[item.print_file_url] || item.print_file_url
+            // Build Printify order - only include physical products
+            const physicalItems = (orderItems || []).filter((item: { product_type?: string }) => 
+              item.product_type !== 'digital-download'
+            )
+            
+            // Only submit to Printify if there are physical items
+            if (physicalItems.length === 0) {
+              console.log('[Stripe Webhook] No physical items to send to Printify (digital-only order)')
+            } else {
+              const printifyOrder = {
+                external_id: orderId,
+                line_items: physicalItems.map((item: any) => ({
+                  blueprint_id: parseInt(item.printify_blueprint_id) || 282, // Default to vertical poster
+                  print_provider_id: 99, // Printify Choice - works for all blueprints
+                  variant_id: getVariantId(item.printify_blueprint_id || '282', item.size), // Map size to variant
+                  quantity: item.quantity || 1,
+                  print_areas: {
+                    front: uploadedImages[item.print_file_url] || item.print_file_url
+                  }
+                })),
+                shipping_method: 1, // Standard shipping
+                is_printify_express: false, // TEST MODE - change to true for production
+                send_shipping_notification: true,
+                address_to: {
+                  first_name: shippingAddress.firstName || '',
+                  last_name: shippingAddress.lastName || '',
+                  email: order.email,
+                  phone: shippingAddress.phone || '',
+                  country: shippingAddress.country || 'US',
+                  region: shippingAddress.state || '',
+                  address1: shippingAddress.address || '',
+                  address2: shippingAddress.address2 || '',
+                  city: shippingAddress.city || '',
+                  zip: shippingAddress.zipCode || ''
                 }
-              })),
-              shipping_method: 1, // Standard shipping
-              is_printify_express: false, // TEST MODE - change to true for production
-              send_shipping_notification: true,
-              address_to: {
-                first_name: shippingAddress.firstName || '',
-                last_name: shippingAddress.lastName || '',
-                email: order.email,
-                phone: shippingAddress.phone || '',
-                country: shippingAddress.country || 'US',
-                region: shippingAddress.state || '',
-                address1: shippingAddress.address || '',
-                address2: shippingAddress.address2 || '',
-                city: shippingAddress.city || '',
-                zip: shippingAddress.zipCode || ''
               }
+
+              // Create order in Printify
+              const printifyResponse = await printify.createOrder(printifyOrder)
+
+              // Update order with Printify details
+              await supabase
+                .from('orders')
+                .update({
+                  printify_order_id: printifyResponse.id,
+                  printify_status: 'submitted',
+                  printify_submitted_at: new Date().toISOString(),
+                  status: 'processing',
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', orderId)
+
+              console.log('[Stripe Webhook] Order submitted to Printify:', printifyResponse.id)
             }
-
-            // Create order in Printify
-            const printifyResponse = await printify.createOrder(printifyOrder)
-
-            // Update order with Printify details
-            await supabase
-              .from('orders')
-              .update({
-                printify_order_id: printifyResponse.id,
-                printify_status: 'submitted',
-                printify_submitted_at: new Date().toISOString(),
-                status: 'processing',
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', orderId)
-
-            console.log('[Stripe Webhook] Order submitted to Printify:', printifyResponse.id)
           } catch (printifyError) {
             console.error('[Stripe Webhook] Printify submission failed:', printifyError)
             

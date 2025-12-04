@@ -170,7 +170,9 @@ export async function POST(req: NextRequest) {
         waveform_style: item.waveformStyle || 'bars',
         design_preset: item.designPreset || null,
         product_color: item.productColor || null,
-        mockup_url: item.mockupUrl || item.thumbnailUrl || null
+        mockup_url: item.mockupUrl || item.thumbnailUrl || null,
+        // Full design state for recreating the design
+        design_state: item.designState || null
       }))
 
       const { error: itemsError } = await supabase

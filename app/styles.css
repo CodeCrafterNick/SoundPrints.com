@@ -4,48 +4,82 @@
 
 @layer base {
   :root {
+    /* ===== MODERN PROFESSIONAL COLOR SYSTEM ===== */
+    
+    /* Base Colors */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 220 20% 10%;
+    
+    /* Card & Surfaces */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 220 20% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --popover-foreground: 220 20% 10%;
+    
+    /* Primary - Rose (Brand Color) */
+    --primary: 347 77% 50%;
+    --primary-foreground: 0 0% 100%;
+    
+    /* Secondary - Cool Gray */
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 20% 25%;
+    
+    /* Muted - Subtle backgrounds */
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 10% 46%;
+    
+    /* Accent - Soft highlight */
+    --accent: 347 77% 96%;
+    --accent-foreground: 347 77% 40%;
+    
+    /* Destructive - Error states */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* Borders & Inputs */
+    --border: 220 14% 90%;
+    --input: 220 14% 90%;
+    --ring: 347 77% 50%;
+    
+    /* Border Radius */
+    --radius: 0.75rem;
+    
+    /* Chart Colors - Modern palette */
+    --chart-1: 347 77% 50%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 262 83% 58%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 199 89% 48%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    /* Dark Mode - Refined & Modern */
+    --background: 220 20% 7%;
+    --foreground: 220 14% 96%;
+    
+    --card: 220 18% 10%;
+    --card-foreground: 220 14% 96%;
+    --popover: 220 18% 10%;
+    --popover-foreground: 220 14% 96%;
+    
+    --primary: 347 77% 55%;
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 220 14% 15%;
+    --secondary-foreground: 220 14% 90%;
+    
+    --muted: 220 14% 15%;
+    --muted-foreground: 220 10% 55%;
+    
+    --accent: 347 77% 15%;
+    --accent-foreground: 347 77% 70%;
+    
+    --destructive: 0 62% 35%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 220 14% 18%;
+    --input: 220 14% 18%;
+    --ring: 347 77% 55%;
   }
 }
 
@@ -55,7 +89,142 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
+}
+
+/* ===== CUSTOM BUTTON ANIMATIONS ===== */
+
+/* Pulse glow animation for glow button variant */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(244, 63, 94, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(244, 63, 94, 0.7), 0 0 40px rgba(244, 63, 94, 0.4);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Shimmer animation for shimmer button variant */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 3s linear infinite;
+}
+
+/* Gradient border animation */
+@keyframes gradient-border {
+  0%, 100% {
+    border-color: hsl(347, 77%, 50%);
+  }
+  50% {
+    border-color: hsl(262, 83%, 58%);
+  }
+}
+
+.animate-gradient-border {
+  animation: gradient-border 3s ease-in-out infinite;
+}
+
+/* Float animation for cards/elements */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* ===== MODERN TYPOGRAPHY ===== */
+
+@layer base {
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+  
+  h1 {
+    @apply text-4xl md:text-5xl lg:text-6xl;
+  }
+  
+  h2 {
+    @apply text-3xl md:text-4xl;
+  }
+  
+  h3 {
+    @apply text-2xl md:text-3xl;
+  }
+  
+  p {
+    @apply leading-relaxed;
+  }
+}
+
+/* ===== UTILITY CLASSES ===== */
+
+/* Gradient text */
+.text-gradient {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-rose-500 to-rose-600;
+}
+
+.text-gradient-purple {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500;
+}
+
+.text-gradient-gold {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-500;
+}
+
+/* Glass effect */
+.glass {
+  @apply bg-white/10 backdrop-blur-md border border-white/20;
+}
+
+.glass-card {
+  @apply bg-white/80 backdrop-blur-lg border border-white/40 shadow-xl;
+}
+
+/* Modern card styles */
+.card-hover {
+  @apply transition-all duration-300 hover:shadow-xl hover:-translate-y-1;
+}
+
+.card-modern {
+  @apply bg-white rounded-2xl border border-gray-100 shadow-lg;
+}
+
+/* Section spacing */
+.section-padding {
+  @apply py-16 md:py-24 lg:py-32;
+}
+
+/* Container max widths */
+.container-narrow {
+  @apply max-w-3xl mx-auto px-4;
+}
+
+.container-wide {
+  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+}
+
+/* Focus styles */
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2;
 }
 
 /* Hide scrollbars in WaveSurfer */

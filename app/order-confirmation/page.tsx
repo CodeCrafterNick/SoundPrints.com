@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
-import { CheckCircle, Home, Package, Loader2, Truck, AlertCircle } from 'lucide-react'
+import { CheckCircle, Home, Package, Loader2, Truck, AlertCircle, Download } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 interface OrderDetails {
@@ -23,6 +23,12 @@ interface OrderDetails {
   tracking_url?: string
   printful_order_id?: string
   printify_mockups?: string[]
+  digital_download_urls?: Array<{
+    itemId: string
+    token: string
+    downloadUrl: string
+    expiresAt: string
+  }>
   created_at: string
   updated_at: string
 }
@@ -181,6 +187,57 @@ function OrderConfirmationContent() {
                   </a>
                 </Button>
               )}
+            </div>
+          )}
+
+          {/* Digital Downloads Section */}
+          {order.digital_download_urls && order.digital_download_urls.length > 0 && (
+            <div className="bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-900/20 dark:to-purple-900/20 border border-violet-200 dark:border-violet-800 rounded-lg p-6 mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Download className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                <h3 className="font-semibold text-violet-900 dark:text-violet-100">Your Digital Downloads</h3>
+              </div>
+              <div className="space-y-3">
+                {order.digital_download_urls.map((download, index) => {
+                  const expiresAt = new Date(download.expiresAt)
+                  const now = new Date()
+                  const isExpired = now > expiresAt
+                  const hoursRemaining = Math.max(0, Math.round((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60)))
+                  
+                  return (
+                    <div key={download.token} className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-lg p-4 border border-violet-100 dark:border-violet-700">
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">Hi-Def Download #{index + 1}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {isExpired 
+                            ? 'Link expired' 
+                            : `Expires in ${hoursRemaining} hour${hoursRemaining !== 1 ? 's' : ''}`
+                          }
+                        </p>
+                      </div>
+                      <Button 
+                        asChild 
+                        disabled={isExpired}
+                        variant={isExpired ? "outline" : "default"}
+                        size="sm"
+                        className={isExpired ? "opacity-50 cursor-not-allowed" : "bg-violet-600 hover:bg-violet-700"}
+                      >
+                        {isExpired ? (
+                          <span>Expired</span>
+                        ) : (
+                          <a href={download.downloadUrl} download>
+                            <Download className="w-4 h-4 mr-2" />
+                            Download PNG
+                          </a>
+                        )}
+                      </Button>
+                    </div>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-violet-600/70 dark:text-violet-400/70 mt-3">
+                Download links are valid for 24 hours and can be used up to 5 times.
+              </p>
             </div>
           )}
 

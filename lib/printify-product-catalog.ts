@@ -104,7 +104,8 @@ export const PRINTIFY_PRODUCTS: PrintifyProduct[] = [
     basePrice: 14.99,
     icon: 'FileText',
     sizes: [
-      { label: '11" × 17"', value: '11x17', width: 11, height: 17, price: 14.99 },
+      // Updated to match actual Printify/Prodigi availability
+      { label: '12" × 18"', value: '12x18', width: 12, height: 18, price: 14.99 },
       { label: '18" × 24"', value: '18x24', width: 18, height: 24, price: 19.99, popular: true },
       { label: '24" × 36"', value: '24x36', width: 24, height: 36, price: 29.99 },
     ],
@@ -125,11 +126,12 @@ export const PRINTIFY_PRODUCTS: PrintifyProduct[] = [
     popular: true,
     icon: 'Image',
     sizes: [
-      { label: '12" × 12"', value: '12x12', width: 12, height: 12, price: 39.99 },
-      { label: '16" × 16"', value: '16x16', width: 16, height: 16, price: 49.99 },
-      { label: '16" × 20"', value: '16x20', width: 16, height: 20, price: 54.99, popular: true },
-      { label: '20" × 24"', value: '20x24', width: 20, height: 24, price: 64.99 },
-      { label: '24" × 36"', value: '24x36', width: 24, height: 36, price: 89.99 },
+      // Updated to match actual Printify/Prodigi availability
+      { label: '8" × 10"', value: '8x10', width: 8, height: 10, price: 34.99 },
+      { label: '11" × 14"', value: '11x14', width: 11, height: 14, price: 44.99 },
+      { label: '12" × 16"', value: '12x16', width: 12, height: 16, price: 49.99 },
+      { label: '18" × 24"', value: '18x24', width: 18, height: 24, price: 64.99, popular: true },
+      { label: '24" × 30"', value: '24x30', width: 24, height: 30, price: 89.99 },
     ],
   },
 
@@ -148,7 +150,8 @@ export const PRINTIFY_PRODUCTS: PrintifyProduct[] = [
     popular: true,
     icon: 'Frame',
     sizes: [
-      { label: '12" × 16"', value: '12x16', width: 12, height: 16, price: 59.99 },
+      // Updated to match actual Printify/Print Pigeons availability
+      { label: '11" × 14"', value: '11x14', width: 11, height: 14, price: 54.99 },
       { label: '16" × 20"', value: '16x20', width: 16, height: 20, price: 69.99 },
       { label: '18" × 24"', value: '18x24', width: 18, height: 24, price: 79.99, popular: true },
       { label: '24" × 36"', value: '24x36', width: 24, height: 36, price: 99.99 },
@@ -167,7 +170,8 @@ export const PRINTIFY_PRODUCTS: PrintifyProduct[] = [
     basePrice: 59.99,
     icon: 'Frame',
     sizes: [
-      { label: '16" × 12"', value: '16x12', width: 16, height: 12, price: 59.99 },
+      // Updated to match actual Printify/Print Pigeons availability
+      { label: '14" × 11"', value: '14x11', width: 14, height: 11, price: 54.99 },
       { label: '20" × 16"', value: '20x16', width: 20, height: 16, price: 69.99 },
       { label: '24" × 18"', value: '24x18', width: 24, height: 18, price: 79.99, popular: true },
       { label: '36" × 24"', value: '36x24', width: 36, height: 24, price: 99.99 },
@@ -189,7 +193,8 @@ export const PRINTIFY_PRODUCTS: PrintifyProduct[] = [
     premium: true,
     icon: 'Palette',
     sizes: [
-      { label: '12" × 16"', value: '12x16', width: 12, height: 16, price: 44.99 },
+      // Updated to match actual Printify/Print Pigeons availability
+      { label: '11" × 14"', value: '11x14', width: 11, height: 14, price: 39.99 },
       { label: '16" × 20"', value: '16x20', width: 16, height: 20, price: 54.99 },
       { label: '18" × 24"', value: '18x24', width: 18, height: 24, price: 64.99, popular: true },
       { label: '24" × 36"', value: '24x36', width: 24, height: 36, price: 89.99 },
@@ -215,8 +220,8 @@ export const PRINTIFY_PRODUCTS: PrintifyProduct[] = [
       { label: '36" × 26"', value: '36x26', width: 36, height: 26, price: 34.99 },
       { label: '50" × 60"', value: '50x60', width: 50, height: 60, price: 49.99, popular: true },
       { label: '60" × 50"', value: '60x50', width: 60, height: 50, price: 49.99 },
-      { label: '60" × 80"', value: '60x80', width: 60, height: 80, price: 69.99 },
-      { label: '80" × 60"', value: '80x60', width: 80, height: 60, price: 69.99 },
+      { label: '68" × 80"', value: '68x80', width: 68, height: 80, price: 69.99 },
+      { label: '80" × 68"', value: '80x68', width: 80, height: 68, price: 69.99 },
     ],
   },
   {
@@ -250,10 +255,10 @@ export const PRINTIFY_PRODUCTS: PrintifyProduct[] = [
     premium: true,
     icon: 'Frame',
     sizes: [
+      { label: '11" × 14"', value: '11x14', width: 11, height: 14, price: 59.99 },
       { label: '12" × 16"', value: '12x16', width: 12, height: 16, price: 69.99 },
-      { label: '16" × 20"', value: '16x20', width: 16, height: 20, price: 79.99 },
-      { label: '18" × 24"', value: '18x24', width: 18, height: 24, price: 89.99, popular: true },
-      { label: '24" × 36"', value: '24x36', width: 24, height: 36, price: 119.99 },
+      { label: '16" × 20"', value: '16x20', width: 16, height: 20, price: 79.99, popular: true },
+      { label: '20" × 30"', value: '20x30', width: 20, height: 30, price: 99.99 },
     ],
   },
   {
@@ -270,10 +275,10 @@ export const PRINTIFY_PRODUCTS: PrintifyProduct[] = [
     premium: true,
     icon: 'Frame',
     sizes: [
+      { label: '14" × 11"', value: '14x11', width: 14, height: 11, price: 59.99 },
       { label: '16" × 12"', value: '16x12', width: 16, height: 12, price: 69.99 },
-      { label: '20" × 16"', value: '20x16', width: 20, height: 16, price: 79.99 },
-      { label: '24" × 18"', value: '24x18', width: 24, height: 18, price: 89.99, popular: true },
-      { label: '36" × 24"', value: '36x24', width: 36, height: 24, price: 119.99 },
+      { label: '20" × 16"', value: '20x16', width: 20, height: 16, price: 79.99, popular: true },
+      { label: '30" × 20"', value: '30x20', width: 30, height: 20, price: 99.99 },
     ],
   },
   {

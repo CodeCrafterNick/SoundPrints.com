@@ -165,13 +165,20 @@ export function WaveformCanvasPreview() {
 
         // Draw based on style
         if (waveformStyle === 'bars') {
-          for (let i = 0; i < normalizedData.length; i++) {
-            const barHeight = normalizedData[i] * waveformHeight
-            const x = Math.round(waveformX + i * barTotalWidth)
-            const y = Math.round(waveformY + (waveformHeight - barHeight) / 2)
+          // Wide bars with spacing
+          const wideBarWidth = barWidth * 1.8
+          const wideBarGap = barGap * 3
+          const wideTotalWidth = wideBarWidth + wideBarGap
+          const wideSamples = Math.floor(waveformWidth / wideTotalWidth)
+          
+          for (let i = 0; i < wideSamples; i++) {
+            const dataIndex = Math.floor((i / wideSamples) * normalizedData.length)
+            const barH = normalizedData[dataIndex] * waveformHeight
+            const x = Math.round(waveformX + i * wideTotalWidth)
+            const y = Math.round(waveformY + (waveformHeight - barH) / 2)
             
             ctx.beginPath()
-            ctx.roundRect(x, y, barWidth, Math.round(barHeight), 2)
+            ctx.roundRect(x, y, wideBarWidth, Math.round(barH), 4)
             ctx.fill()
           }
         } else if (waveformStyle === 'mirror') {
@@ -188,6 +195,58 @@ export function WaveformCanvasPreview() {
             ctx.roundRect(x, centerY, barWidth, Math.round(barHeight), 2)
             ctx.fill()
           }
+        } else if (waveformStyle === 'image-mask') {
+          // Solid waveform shape - filled silhouette
+          const maskCenterY = waveformY + waveformHeight / 2
+          
+          ctx.beginPath()
+          
+          // Top edge
+          for (let i = 0; i < normalizedData.length; i++) {
+            const x = waveformX + (i / normalizedData.length) * waveformWidth
+            const amplitude = normalizedData[i] * (waveformHeight / 2)
+            const y = maskCenterY - amplitude
+            
+            if (i === 0) {
+              ctx.moveTo(x, y)
+            } else {
+              const prevX = waveformX + ((i - 1) / normalizedData.length) * waveformWidth
+              const prevAmplitude = normalizedData[i - 1] * (waveformHeight / 2)
+              const prevY = maskCenterY - prevAmplitude
+              const cpX = (prevX + x) / 2
+              const cpY = (prevY + y) / 2
+              ctx.quadraticCurveTo(prevX, prevY, cpX, cpY)
+            }
+          }
+          
+          // Bottom edge (reverse)
+          for (let i = normalizedData.length - 1; i >= 0; i--) {
+            const x = waveformX + (i / normalizedData.length) * waveformWidth
+            const amplitude = normalizedData[i] * (waveformHeight / 2)
+            const y = maskCenterY + amplitude
+            
+            if (i === normalizedData.length - 1) {
+              ctx.lineTo(x, y)
+            } else {
+              const nextX = waveformX + ((i + 1) / normalizedData.length) * waveformWidth
+              const nextAmplitude = normalizedData[i + 1] * (waveformHeight / 2)
+              const nextY = maskCenterY + nextAmplitude
+              const cpX = (nextX + x) / 2
+              const cpY = (nextY + y) / 2
+              ctx.quadraticCurveTo(nextX, nextY, cpX, cpY)
+            }
+          }
+          
+          ctx.closePath()
+          
+          // Use gradient or color as fill
+          const imageMaskGradient = ctx.createLinearGradient(waveformX, waveformY, waveformX + waveformWidth, waveformY + waveformHeight)
+          imageMaskGradient.addColorStop(0, '#3b82f6')
+          imageMaskGradient.addColorStop(0.5, '#8b5cf6')
+          imageMaskGradient.addColorStop(1, '#ec4899')
+          
+          ctx.fillStyle = waveformUseGradient && waveformGradientStops.length > 0 ? waveformFillStyle : imageMaskGradient
+          ctx.fill()
         }
 
         // Draw text if enabled

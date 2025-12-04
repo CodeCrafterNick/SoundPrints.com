@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
 import Link from 'next/link'
@@ -36,7 +37,8 @@ const galleryItems = [
     customer: 'Sarah & Mike',
     style: 'Classic Bars',
     colors: { waveform: '#D4AF37', background: '#1a1a2e' },
-    aspectRatio: '3/4'
+    aspectRatio: '3/4',
+    image: 'https://images.unsplash.com/photo-1519741497674-611481863552?w=600&q=80', // Wedding dance
   },
   {
     id: 2,
@@ -46,7 +48,8 @@ const galleryItems = [
     customer: 'Emily R.',
     style: 'Smooth Wave',
     colors: { waveform: '#ffffff', background: '#2d3436' },
-    aspectRatio: '1/1'
+    aspectRatio: '1/1',
+    image: 'https://images.unsplash.com/photo-1516733968668-dbdce39c0651?w=600&q=80', // Grandmother
   },
   {
     id: 3,
@@ -56,7 +59,8 @@ const galleryItems = [
     customer: 'The Johnson Family',
     style: 'Heartbeat',
     colors: { waveform: '#ff6b6b', background: '#fff5f5' },
-    aspectRatio: '4/3'
+    aspectRatio: '4/3',
+    image: 'https://images.unsplash.com/photo-1492725764893-90b379c2b6e7?w=600&q=80', // Baby
   },
   {
     id: 4,
@@ -66,7 +70,8 @@ const galleryItems = [
     customer: 'David & Lisa',
     style: 'Mirror Wave',
     colors: { waveform: '#6c5ce7', background: '#dfe6e9' },
-    aspectRatio: '3/4'
+    aspectRatio: '3/4',
+    image: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=600&q=80', // Concert
   },
   {
     id: 5,
@@ -76,7 +81,8 @@ const galleryItems = [
     customer: 'Alex T.',
     style: 'Spectrum',
     colors: { waveform: '#00cec9', background: '#0d0d0d' },
-    aspectRatio: '16/9'
+    aspectRatio: '16/9',
+    image: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=600&q=80', // Podcast studio
   },
   {
     id: 6,
@@ -86,7 +92,8 @@ const galleryItems = [
     customer: 'Jennifer K.',
     style: 'Classic Bars',
     colors: { waveform: '#fdcb6e', background: '#2d3436' },
-    aspectRatio: '3/4'
+    aspectRatio: '3/4',
+    image: 'https://images.unsplash.com/photo-1606216794074-735e91aa2c92?w=600&q=80', // Wedding rings
   },
   {
     id: 7,
@@ -96,7 +103,8 @@ const galleryItems = [
     customer: 'The Martinez Family',
     style: 'Heartbeat',
     colors: { waveform: '#e84393', background: '#ffeef8' },
-    aspectRatio: '1/1'
+    aspectRatio: '1/1',
+    image: 'https://images.unsplash.com/photo-1555252333-9f8e92e65df9?w=600&q=80', // Ultrasound
   },
   {
     id: 8,
@@ -106,7 +114,8 @@ const galleryItems = [
     customer: 'The Williams Family',
     style: 'Circular',
     colors: { waveform: '#74b9ff', background: '#0a3d62' },
-    aspectRatio: '1/1'
+    aspectRatio: '1/1',
+    image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&q=80', // Music memory
   },
   {
     id: 9,
@@ -116,7 +125,8 @@ const galleryItems = [
     customer: 'Rachel M.',
     style: 'Blocks',
     colors: { waveform: '#fab1a0', background: '#2d3436' },
-    aspectRatio: '3/4'
+    aspectRatio: '3/4',
+    image: 'https://images.unsplash.com/photo-1558636508-e0db3814bd1d?w=600&q=80', // Birthday
   }
 ]
 
@@ -124,17 +134,20 @@ const testimonials = [
   {
     quote: "I turned my grandmother's last voicemail into a canvas print. Now her voice lives on in our living room. I cry happy tears every time I look at it.",
     author: "Emily R.",
-    location: "Boston, MA"
+    location: "Boston, MA",
+    image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&q=80"
   },
   {
     quote: "We used our first dance song for our 10th anniversary. My husband was speechless. Best gift I've ever given.",
     author: "Sarah M.",
-    location: "Austin, TX"
+    location: "Austin, TX",
+    image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&q=80"
   },
   {
     quote: "Our baby's heartbeat from the first ultrasound - it's the most precious thing we own. Everyone asks about it!",
     author: "The Garcia Family",
-    location: "Los Angeles, CA"
+    location: "Los Angeles, CA",
+    image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&q=80"
   }
 ]
 
@@ -151,7 +164,16 @@ export default function GalleryPage() {
       
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="bg-gradient-to-b from-primary/5 to-background py-16">
+        <section className="relative bg-gradient-to-b from-primary/5 to-background py-16 overflow-hidden">
+          <div className="absolute inset-0 -z-10">
+            <Image
+              src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1920&q=80"
+              alt="Art gallery"
+              fill
+              className="object-cover opacity-10"
+              priority
+            />
+          </div>
           <div className="container mx-auto px-4 text-center">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
               <Sparkles className="h-4 w-4" />
@@ -197,18 +219,26 @@ export default function GalleryPage() {
                   key={item.id}
                   className="group bg-card rounded-2xl border overflow-hidden hover:shadow-xl transition-all duration-300"
                 >
-                  {/* Preview Image Placeholder */}
+                  {/* Preview Image */}
                   <div 
                     className="relative overflow-hidden"
-                    style={{ 
-                      aspectRatio: item.aspectRatio,
-                      backgroundColor: item.colors.background 
-                    }}
+                    style={{ aspectRatio: item.aspectRatio }}
                   >
-                    {/* Simulated waveform */}
-                    <div className="absolute inset-0 flex items-center justify-center p-8">
-                      <div className="w-full h-1/2 flex items-end justify-center gap-[2px]">
-                        {Array.from({ length: 60 }).map((_, i) => (
+                    {/* Background lifestyle image */}
+                    <Image
+                      src={item.image}
+                      alt={item.title}
+                      fill
+                      className="object-cover"
+                    />
+                    
+                    {/* Overlay with waveform effect */}
+                    <div 
+                      className="absolute inset-0 flex items-center justify-center"
+                      style={{ backgroundColor: `${item.colors.background}cc` }}
+                    >
+                      <div className="w-3/4 h-1/2 flex items-end justify-center gap-[2px]">
+                        {Array.from({ length: 50 }).map((_, i) => (
                           <div
                             key={i}
                             className="w-1 rounded-full transition-all duration-300"
@@ -256,10 +286,20 @@ export default function GalleryPage() {
               {testimonials.map((testimonial, index) => (
                 <div key={index} className="bg-card rounded-2xl border p-6">
                   <Quote className="h-8 w-8 text-primary/20 mb-4" />
-                  <p className="text-muted-foreground mb-6 italic">"{testimonial.quote}"</p>
-                  <div>
-                    <p className="font-semibold">{testimonial.author}</p>
-                    <p className="text-sm text-muted-foreground">{testimonial.location}</p>
+                  <p className="text-muted-foreground mb-6 italic">&quot;{testimonial.quote}&quot;</p>
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-10 h-10 rounded-full overflow-hidden">
+                      <Image
+                        src={testimonial.image}
+                        alt={testimonial.author}
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                    <div>
+                      <p className="font-semibold">{testimonial.author}</p>
+                      <p className="text-sm text-muted-foreground">{testimonial.location}</p>
+                    </div>
                   </div>
                 </div>
               ))}

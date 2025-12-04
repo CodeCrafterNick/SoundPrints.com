@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { ProductType } from './customizer-store'
+import type { SavedDesignState } from '@/lib/types/saved-design'
 
 export interface CartItem {
   id: string
@@ -24,6 +25,8 @@ export interface CartItem {
   designPreset?: string
   productColor?: string
   mockupUrl?: string
+  // Full design state for recreating the design later
+  designState?: SavedDesignState
 }
 
 interface CartState {

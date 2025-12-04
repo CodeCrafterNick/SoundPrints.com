@@ -10,7 +10,7 @@ import { Combobox } from '@/components/ui/combobox'
 import { StripePayment } from '@/components/checkout/stripe-payment'
 import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
-import { ArrowLeft, Trash2 } from 'lucide-react'
+import { ArrowLeft, Trash2, Loader2, Package, CreditCard, CheckCircle, Download } from 'lucide-react'
 import { toast } from 'sonner'
 
 const US_STATES = [
@@ -105,6 +105,8 @@ export default function CheckoutPage() {
   const clearCart = useCartStore((state) => state.clearCart)
   
   const [showPayment, setShowPayment] = useState(false)
+  const [isProcessingOrder, setIsProcessingOrder] = useState(false)
+  const [processingStep, setProcessingStep] = useState<'payment' | 'order' | 'redirect'>('payment')
   const [billingSameAsShipping, setBillingSameAsShipping] = useState(true)
   const [shippingInfo, setShippingInfo] = useState({
     firstName: '',
@@ -120,7 +122,8 @@ export default function CheckoutPage() {
   const [billingInfo, setBillingInfo] = useState({
     firstName: '',
     lastName: '',
-    address: '',
+    address1: '',
+    address2: '',
     city: '',
     state: '',
     zipCode: '',
@@ -128,8 +131,14 @@ export default function CheckoutPage() {
   })
   
   const subtotal = getTotal()
+  
+  // Check if this is a digital-only order (no physical products to ship)
+  const isDigitalOnlyOrder = items.every(item => item.productType === 'digital-download')
+  const hasDigitalItems = items.some(item => item.productType === 'digital-download')
+  
+  // No shipping for digital-only orders
+  const shipping = isDigitalOnlyOrder ? 0 : (subtotal > 50 ? 0 : 5.99)
   const tax = subtotal * 0.08 // 8% tax
-  const shipping = subtotal > 50 ? 0 : 5.99
   const total = subtotal + tax + shipping
 
   // Auto-populate email from logged-in user
@@ -143,7 +152,19 @@ export default function CheckoutPage() {
   }, [isLoaded, user])
 
   const handleContinueToPayment = () => {
-    // Validate shipping info
+    // For digital-only orders, only require email
+    if (isDigitalOnlyOrder) {
+      // Validate email
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!shippingInfo.email || !emailRegex.test(shippingInfo.email)) {
+        toast.error('Please enter a valid email address for your download link')
+        return
+      }
+      setShowPayment(true)
+      return
+    }
+    
+    // Validate shipping info for physical products
     const requiredShippingFields = ['firstName', 'lastName', 'email', 'phone', 'address', 'city', 'state', 'zipCode']
     const missingShippingFields = requiredShippingFields.filter(
       (field) => !shippingInfo[field as keyof typeof shippingInfo]
@@ -178,6 +199,9 @@ export default function CheckoutPage() {
   }
 
   const handlePaymentSuccess = async (paymentIntentId: string) => {
+    setIsProcessingOrder(true)
+    setProcessingStep('order')
+    
     try {
       // Create order in database
       const finalBillingAddress = billingSameAsShipping ? shippingInfo : billingInfo
@@ -212,6 +236,8 @@ export default function CheckoutPage() {
             printifyBlueprintId: item.printifyBlueprintId,
             printifyVariantId: item.printifyVariantId,
             waveformStyle: item.waveformStyle,
+            // Full design state for recreating the design
+            designState: item.designState,
           })),
           paymentIntentId,
         }),
@@ -220,15 +246,20 @@ export default function CheckoutPage() {
       if (response.ok) {
         const data = await response.json()
         clearCart()
+        setProcessingStep('redirect')
         toast.success('Order placed successfully!')
+        // Small delay to show the success state before redirect
+        await new Promise(resolve => setTimeout(resolve, 500))
         router.push(`/order-confirmation?orderId=${data.order.id}`)
       } else {
         const error = await response.json()
         toast.error(error.error || 'Failed to create order')
+        setIsProcessingOrder(false)
       }
     } catch (error) {
       console.error('Error creating order:', error)
       toast.error('Failed to create order')
+      setIsProcessingOrder(false)
     }
   }
 
@@ -252,6 +283,89 @@ export default function CheckoutPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      {/* Order Processing Overlay */}
+      {isProcessingOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
+          <div className="text-center space-y-8 p-8 max-w-md">
+            {/* Animated progress steps */}
+            <div className="flex items-center justify-center gap-4">
+              <div className={`flex items-center justify-center w-12 h-12 rounded-full transition-all duration-300 ${
+                processingStep === 'payment' ? 'bg-violet-600 text-white scale-110' :
+                processingStep === 'order' || processingStep === 'redirect' ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'
+              }`}>
+                {processingStep === 'payment' ? (
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                ) : (
+                  <CheckCircle className="w-6 h-6" />
+                )}
+              </div>
+              <div className="h-1 w-12 bg-muted rounded-full overflow-hidden">
+                <div className={`h-full bg-green-500 transition-all duration-500 ${
+                  processingStep === 'payment' ? 'w-0' : 'w-full'
+                }`} />
+              </div>
+              <div className={`flex items-center justify-center w-12 h-12 rounded-full transition-all duration-300 ${
+                processingStep === 'order' ? 'bg-violet-600 text-white scale-110' :
+                processingStep === 'redirect' ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'
+              }`}>
+                {processingStep === 'order' ? (
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                ) : processingStep === 'redirect' ? (
+                  <CheckCircle className="w-6 h-6" />
+                ) : (
+                  <Package className="w-6 h-6" />
+                )}
+              </div>
+              <div className="h-1 w-12 bg-muted rounded-full overflow-hidden">
+                <div className={`h-full bg-green-500 transition-all duration-500 ${
+                  processingStep === 'redirect' ? 'w-full' : 'w-0'
+                }`} />
+              </div>
+              <div className={`flex items-center justify-center w-12 h-12 rounded-full transition-all duration-300 ${
+                processingStep === 'redirect' ? 'bg-green-500 text-white scale-110' : 'bg-muted text-muted-foreground'
+              }`}>
+                {processingStep === 'redirect' ? (
+                  <CheckCircle className="w-6 h-6" />
+                ) : (
+                  <CreditCard className="w-6 h-6" />
+                )}
+              </div>
+            </div>
+
+            {/* Status text */}
+            <div className="space-y-2">
+              <h2 className="text-2xl font-bold">
+                {processingStep === 'payment' && 'Processing Payment...'}
+                {processingStep === 'order' && 'Creating Your Order...'}
+                {processingStep === 'redirect' && 'Order Complete!'}
+              </h2>
+              <p className="text-muted-foreground">
+                {processingStep === 'payment' && 'Securely processing your payment with Stripe'}
+                {processingStep === 'order' && 'Preparing your custom SoundPrint for production'}
+                {processingStep === 'redirect' && 'Redirecting to your order confirmation...'}
+              </p>
+            </div>
+
+            {/* Animated dots */}
+            {processingStep !== 'redirect' && (
+              <div className="flex items-center justify-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-violet-600 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-2 h-2 rounded-full bg-violet-600 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-2 h-2 rounded-full bg-violet-600 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            )}
+
+            {/* Security note */}
+            <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              Please don&apos;t close this page
+            </p>
+          </div>
+        </div>
+      )}
+
       <SiteHeader />
 
       <main className="flex-1 container mx-auto px-4 py-8">
@@ -280,9 +394,20 @@ export default function CheckoutPage() {
                       )}
                     </div>
                     <div className="flex-1">
-                      <h3 className="font-semibold">
-                        {item.productType.replace('-', ' ').toUpperCase()} - {item.size}
+                      <h3 className="font-semibold flex items-center gap-2">
+                        {item.productType === 'digital-download' && (
+                          <Download className="h-4 w-4 text-violet-600" />
+                        )}
+                        {item.productType === 'digital-download' 
+                          ? 'Hi-Def Digital Download' 
+                          : `${item.productType.replace('-', ' ').toUpperCase()} - ${item.size}`
+                        }
                       </h3>
+                      {item.productType === 'digital-download' && (
+                        <p className="text-xs text-violet-600 mt-1">
+                          {item.size} • 24hr download link after purchase
+                        </p>
+                      )}
                       <p className="text-sm text-muted-foreground mt-1">
                         {item.audioFileName}
                       </p>
@@ -326,10 +451,44 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {/* Shipping Information */}
+            {/* Shipping/Contact Information */}
             <div className="bg-card rounded-lg border p-6">
-              <h2 className="text-xl font-semibold mb-4">Shipping Information</h2>
-              <div className="grid gap-4">
+              <h2 className="text-xl font-semibold mb-4">
+                {isDigitalOnlyOrder ? 'Contact Information' : 'Shipping Information'}
+              </h2>
+              
+              {isDigitalOnlyOrder ? (
+                // Simplified form for digital-only orders
+                <div className="grid gap-4">
+                  <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-lg p-4 mb-2">
+                    <div className="flex items-center gap-2 text-violet-700 dark:text-violet-300">
+                      <Download className="h-4 w-4" />
+                      <span className="text-sm font-medium">Digital Download</span>
+                    </div>
+                    <p className="text-xs text-violet-600 dark:text-violet-400 mt-1">
+                      Your download link will be sent to the email address below and will be available on the order confirmation page.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Email Address *</label>
+                    <input
+                      type="email"
+                      className="w-full mt-1 px-3 py-2 border rounded-md"
+                      placeholder="your@email.com"
+                      value={shippingInfo.email}
+                      onChange={(e) =>
+                        setShippingInfo({ ...shippingInfo, email: e.target.value })
+                      }
+                      disabled={showPayment}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Your download link will be sent here
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                // Full shipping form for physical products
+                <div className="grid gap-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">First Name *</label>
@@ -463,9 +622,11 @@ export default function CheckoutPage() {
                   </div>
                 </div>
               </div>
+              )}
             </div>
 
-            {/* Billing Address Section */}
+            {/* Billing Address Section - only show for physical products */}
+            {!isDigitalOnlyOrder && (
             <div className="bg-white rounded-lg p-6 shadow-sm">
               <div className="flex items-center gap-3 mb-4">
                 <input
@@ -605,12 +766,20 @@ export default function CheckoutPage() {
                 </div>
               )}
             </div>
+            )}
 
             {/* Payment Section */}
             {showPayment && (
               <div className="bg-card rounded-lg border p-6">
                 <h2 className="text-xl font-semibold mb-4">Payment Information</h2>
-                <StripePayment amount={total} onSuccess={handlePaymentSuccess} />
+                <StripePayment 
+                  amount={total} 
+                  onSuccess={handlePaymentSuccess} 
+                  onProcessingStart={() => {
+                    setIsProcessingOrder(true)
+                    setProcessingStep('payment')
+                  }}
+                />
               </div>
             )}
           </div>
@@ -630,11 +799,16 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Shipping</span>
-                  <span>{shipping === 0 ? 'FREE' : `$${shipping.toFixed(2)}`}</span>
+                  <span>{isDigitalOnlyOrder ? 'N/A' : (shipping === 0 ? 'FREE' : `$${shipping.toFixed(2)}`)}</span>
                 </div>
-                {shipping === 0 && (
+                {!isDigitalOnlyOrder && shipping === 0 && (
                   <p className="text-xs text-green-600">
                     🎉 Free shipping on orders over $50!
+                  </p>
+                )}
+                {isDigitalOnlyOrder && (
+                  <p className="text-xs text-violet-600">
+                    📥 Instant digital delivery after payment
                   </p>
                 )}
                 <div className="border-t pt-3">

@@ -16,6 +16,9 @@ const config: Config = {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -64,6 +67,16 @@ const config: Config = {
         "accordion-up": {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
+        },
+        "soundwave-pulse": {
+          "0%, 100%": {
+            transform: "scaleY(0.3)",
+            opacity: "0.6",
+          },
+          "50%": {
+            transform: "scaleY(1)",
+            opacity: "1",
+          },
         },
       },
       animation: {

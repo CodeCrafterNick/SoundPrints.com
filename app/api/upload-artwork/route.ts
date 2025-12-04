@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+// Runtime and timeout config for large uploads
+export const runtime = 'nodejs'
+export const maxDuration = 60 // seconds
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -8,7 +12,19 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
-    const { artworkDataUrl } = await request.json()
+    // Read the raw body as text first to handle large payloads
+    const body = await request.text()
+    let artworkDataUrl: string
+    
+    try {
+      const parsed = JSON.parse(body)
+      artworkDataUrl = parsed.artworkDataUrl
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body' },
+        { status: 400 }
+      )
+    }
 
     if (!artworkDataUrl) {
       return NextResponse.json(

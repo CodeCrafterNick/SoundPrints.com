@@ -4,10 +4,10 @@ import { useCustomizerStore } from '@/lib/stores/customizer-store'
 import { QrCode, ExternalLink } from 'lucide-react'
 import { Slider } from '@/components/ui/slider'
 import { cn } from '@/lib/utils'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, memo } from 'react'
 import QRCodeLib from 'qrcode'
 
-export function QRCodeCustomizer() {
+const QRCodeCustomizerBase = memo(function QRCodeCustomizer() {
   const showQRCode = useCustomizerStore((state) => state.showQRCode)
   const qrCodeUrl = useCustomizerStore((state) => state.qrCodeUrl)
   const qrCodePosition = useCustomizerStore((state) => state.qrCodePosition)
@@ -215,4 +215,6 @@ export function QRCodeCustomizer() {
       )}
     </div>
   )
-}
+})
+
+export { QRCodeCustomizerBase as QRCodeCustomizer }

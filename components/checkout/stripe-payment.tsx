@@ -17,9 +17,10 @@ interface CheckoutFormProps {
   amount: number
   clientSecret: string
   onSuccess: (paymentIntentId: string) => void
+  onProcessingStart?: () => void
 }
 
-function CheckoutForm({ amount, clientSecret, onSuccess }: CheckoutFormProps) {
+function CheckoutForm({ amount, clientSecret, onSuccess, onProcessingStart }: CheckoutFormProps) {
   const stripe = useStripe()
   const elements = useElements()
   const [isProcessing, setIsProcessing] = useState(false)
@@ -47,6 +48,8 @@ function CheckoutForm({ amount, clientSecret, onSuccess }: CheckoutFormProps) {
       if (error) {
         setErrorMessage(error.message)
       } else if (paymentIntent && paymentIntent.status === 'succeeded') {
+        // Notify parent that order processing is starting
+        onProcessingStart?.()
         onSuccess(paymentIntent.id)
       }
     } catch (err) {
@@ -88,9 +91,10 @@ function CheckoutForm({ amount, clientSecret, onSuccess }: CheckoutFormProps) {
 interface StripePaymentProps {
   amount: number
   onSuccess: (paymentIntentId: string) => void
+  onProcessingStart?: () => void
 }
 
-export function StripePayment({ amount, onSuccess }: StripePaymentProps) {
+export function StripePayment({ amount, onSuccess, onProcessingStart }: StripePaymentProps) {
   const [clientSecret, setClientSecret] = useState<string>()
   const [loading, setLoading] = useState(true)
 
@@ -133,7 +137,7 @@ export function StripePayment({ amount, onSuccess }: StripePaymentProps) {
         },
       }}
     >
-      <CheckoutForm amount={amount} clientSecret={clientSecret} onSuccess={onSuccess} />
+      <CheckoutForm amount={amount} clientSecret={clientSecret} onSuccess={onSuccess} onProcessingStart={onProcessingStart} />
     </Elements>
   )
 }

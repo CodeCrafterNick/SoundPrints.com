@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
 import Link from 'next/link'
@@ -13,7 +14,16 @@ export default function AboutPage() {
       
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="container mx-auto px-4 py-20">
+        <section className="relative container mx-auto px-4 py-20 overflow-hidden">
+          <div className="absolute inset-0 -z-10">
+            <Image
+              src="https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=1920&q=80"
+              alt="Music and sound"
+              fill
+              className="object-cover opacity-10"
+              priority
+            />
+          </div>
           <div className="max-w-3xl mx-auto text-center">
             <h1 className="text-5xl font-bold mb-6 bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
               About SoundPrints
@@ -27,24 +37,34 @@ export default function AboutPage() {
         {/* Story Section */}
         <section className="border-t bg-muted/20 py-20">
           <div className="container mx-auto px-4">
-            <div className="max-w-3xl mx-auto">
-              <h2 className="text-3xl font-bold mb-6">Our Story</h2>
-              <div className="space-y-4 text-muted-foreground">
-                <p>
-                  SoundPrints was born from a simple yet powerful idea: sound carries meaning. 
-                  Whether it's your wedding song, your baby's first words, a loved one's voice, 
-                  or the soundtrack to your favorite memory—these audio moments deserve to be 
-                  preserved and celebrated.
-                </p>
-                <p>
-                  We created a platform that transforms any audio into beautiful, unique 
-                  soundwave artwork. Each piece is as individual as the sound itself, 
-                  making it the perfect way to capture and display the moments that matter most.
-                </p>
-                <p>
-                  What started as a passion project has grown into a mission to help people 
-                  create meaningful, personalized art that tells their unique story.
-                </p>
+            <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-12 items-center">
+              <div>
+                <h2 className="text-3xl font-bold mb-6">Our Story</h2>
+                <div className="space-y-4 text-muted-foreground">
+                  <p>
+                    SoundPrints was born from a simple yet powerful idea: sound carries meaning. 
+                    Whether it&apos;s your wedding song, your baby&apos;s first words, a loved one&apos;s voice, 
+                    or the soundtrack to your favorite memory—these audio moments deserve to be 
+                    preserved and celebrated.
+                  </p>
+                  <p>
+                    We created a platform that transforms any audio into beautiful, unique 
+                    soundwave artwork. Each piece is as individual as the sound itself, 
+                    making it the perfect way to capture and display the moments that matter most.
+                  </p>
+                  <p>
+                    What started as a passion project has grown into a mission to help people 
+                    create meaningful, personalized art that tells their unique story.
+                  </p>
+                </div>
+              </div>
+              <div className="relative aspect-square rounded-2xl overflow-hidden shadow-2xl">
+                <Image
+                  src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&q=80"
+                  alt="Sound studio"
+                  fill
+                  className="object-cover"
+                />
               </div>
             </div>
           </div>
@@ -93,7 +113,7 @@ export default function AboutPage() {
         <section className="border-t bg-muted/20 py-20">
           <div className="container mx-auto px-4">
             <h2 className="text-3xl font-bold text-center mb-12">The SoundPrints Experience</h2>
-            <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-12 items-center">
+            <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-12 items-center">
               <div className="space-y-6">
                 <div className="flex gap-4">
                   <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold">
@@ -140,10 +160,13 @@ export default function AboutPage() {
                   </div>
                 </div>
               </div>
-              <div className="relative">
-                <div className="aspect-square rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                  <Music className="w-32 h-32 text-primary/30" />
-                </div>
+              <div className="relative aspect-square rounded-2xl overflow-hidden shadow-2xl">
+                <Image
+                  src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80"
+                  alt="Art gallery"
+                  fill
+                  className="object-cover"
+                />
               </div>
             </div>
           </div>

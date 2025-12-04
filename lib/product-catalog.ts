@@ -7,13 +7,14 @@ export interface ProductInfo {
   templateId: string
   name: string
   description: string
-  category: 'wall-art' | 'apparel'
-  productType: 'poster' | 'canvas' | 'tshirt'
+  category: 'wall-art' | 'apparel' | 'digital'
+  productType: 'poster' | 'canvas' | 'tshirt' | 'digital-download'
   size: string
   price: number
   printfulVariantId?: number  // To be added once Printful API key is set up
   popular?: boolean
   tags?: string[]
+  isDigital?: boolean
 }
 
 export const PRODUCT_CATALOG: ProductInfo[] = [
@@ -84,6 +85,19 @@ export const PRODUCT_CATALOG: ProductInfo[] = [
   //   price: 19.95,
   //   tags: ['apparel', 'tshirt', 'white']
   // }
+  
+  // Digital Downloads
+  {
+    templateId: 'digital-hi-def',
+    name: 'Super Hi-Def Digital Download',
+    description: 'Download your waveform design as a super high-resolution PNG (4000x6000). Perfect for printing yourself or using as digital artwork. Link expires in 24 hours.',
+    category: 'digital',
+    productType: 'digital-download',
+    size: '4000×6000 px',
+    price: 1.00,
+    tags: ['digital', 'download', 'hi-def', 'png'],
+    isDigital: true
+  }
 ]
 
 /**

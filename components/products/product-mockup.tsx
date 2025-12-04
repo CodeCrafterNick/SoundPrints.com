@@ -1,15 +1,24 @@
 'use client'
 
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback } from 'react'
-import { useCustomizerStore, type GradientStop } from '@/lib/stores/customizer-store'
+import { useCustomizerStore, useProductMockupConfig, type GradientStop } from '@/lib/stores/customizer-store'
 import { Frame, Shirt, Coffee, Palette, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import QRCode from 'qrcode'
+import type QRCodeType from 'qrcode'
+// QRCode is lazy-loaded only when needed (~25kB savings)
+let QRCodeModule: typeof QRCodeType | null = null
+const getQRCode = async (): Promise<typeof QRCodeType> => {
+  if (!QRCodeModule) {
+    QRCodeModule = (await import('qrcode')) as unknown as typeof QRCodeType
+  }
+  return QRCodeModule
+}
 
 interface ProductMockupProps {
   className?: string
   canvasWidth?: number
   canvasHeight?: number
+  hideOverlays?: boolean // Hide text and QR code overlays (used when InteractiveCanvasEditor handles them)
 }
 
 export interface ProductMockupRef {
@@ -18,7 +27,7 @@ export interface ProductMockupRef {
 }
 
 export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
-  function ProductMockup({ className, canvasWidth = 3600, canvasHeight = 4800 }, ref) {
+  function ProductMockup({ className, canvasWidth = 3600, canvasHeight = 4800, hideOverlays = false }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -26,7 +35,25 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
   const [fontLoaded, setFontLoaded] = useState(false)
   const lastWaveformKey = useRef<string>('')
   const lastOverlayKey = useRef<string>('')
+  const lastPositionKey = useRef<string>('')
   const waveformImageData = useRef<ImageData | null>(null)
+  // Cache decoded audio to avoid refetching/decoding on position changes
+  const cachedAudioRef = useRef<{ url: string; buffer: AudioBuffer } | null>(null)
+  // Offscreen canvas for double-buffering (prevents flash during render)
+  const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  // Cache background as separate canvas for fast compositing
+  const cachedBackgroundCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  // Cache normalized waveform data to skip audio processing on position changes
+  const cachedWaveformDataRef = useRef<{
+    normalizedData: number[]
+    waveformWidth: number
+    waveformHeight: number
+    barWidth: number
+    barGap: number
+    key: string // To know when to invalidate
+  } | null>(null)
+  // Cache the mask image to avoid reloading on every render
+  const cachedMaskImageRef = useRef<{ url: string; image: HTMLImageElement } | null>(null)
   
   // Helper function to add opacity to color (handles hex and rgba)
   const addOpacity = useCallback((color: string, opacity: string): string => {
@@ -89,6 +116,13 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     const currentArtisticTextStyle = state.artisticTextStyle
     const currentArtisticTextColor = state.artisticTextColor
     const currentArtisticTextOpacity = state.artisticTextOpacity
+    const currentWaveformXPos = state.waveformX ?? 50
+    const currentWaveformYPos = state.waveformY ?? 50
+    const currentBarWidth = state.barWidth ?? 6
+    const currentBarGap = state.barGap ?? 1
+    const currentCircleRadius = state.circleRadius ?? 50
+    const currentMirrorUseTwoColors = state.mirrorUseTwoColors ?? false
+    const currentMirrorSecondaryColor = state.mirrorSecondaryColor ?? '#888888'
     
     if (!currentAudioUrl) {
       console.error('[getPrintFile] No audio URL available')
@@ -304,12 +338,17 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     // Clamp both width and height to prevent overflow, leaving buffer
     const waveformWidth = Math.min(unclampedWaveformWidth, maxAllowedWidth)
     const waveformHeight = Math.min(unclamppedWaveformHeight, maxAllowedHeight)
-    const padding = (printCanvas.width - waveformWidth) / 2
-    const waveformX = padding
-    const waveformY = (printCanvas.height - waveformHeight) / 2
     
-    const barWidth = Math.max(2, Math.floor(printCanvas.width / 600)) // Scale bar width with resolution
-    const barGap = Math.max(1, Math.floor(barWidth / 3))
+    // Use waveformX/Y position (percentage-based, 50 = center)
+    const waveformCenterX = (currentWaveformXPos / 100) * printCanvas.width
+    const waveformCenterY = (currentWaveformYPos / 100) * printCanvas.height
+    const waveformX = waveformCenterX - waveformWidth / 2
+    const waveformY = waveformCenterY - waveformHeight / 2
+    
+    // Use store values for bar width/gap, scaled for print resolution
+    const printScale = printCanvas.width / 1200 // Base scale for print
+    const barWidth = Math.max(2, Math.round(currentBarWidth * printScale))
+    const barGap = Math.max(1, Math.round(currentBarGap * printScale))
     const barTotalWidth = barWidth + barGap
     // Calculate samples based on waveformWidth for proper proportional sizing
     const samples = Math.floor(waveformWidth / barTotalWidth)
@@ -365,13 +404,21 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     // Render waveform based on style
     switch (currentWaveformStyle) {
       case 'bars':
-        // Default bars - scale positions to fit within waveformWidth
-        for (let i = 0; i < normalizedData.length; i++) {
-          const x = waveformX + (i / normalizedData.length) * waveformWidth
-          const barHeight = normalizedData[i] * waveformHeight
-          const y = waveformY + (waveformHeight - barHeight) / 2
+        // Wide bars with spacing
+        const printWideBarWidth = barWidth * 1.8
+        const printWideBarGap = barGap * 3
+        const printWideTotalWidth = printWideBarWidth + printWideBarGap
+        const printWideSamples = Math.floor(waveformWidth / printWideTotalWidth)
+        
+        for (let i = 0; i < printWideSamples; i++) {
+          const dataIndex = Math.floor((i / printWideSamples) * normalizedData.length)
+          const barH = normalizedData[dataIndex] * waveformHeight
+          const x = waveformX + i * printWideTotalWidth
+          const y = waveformY + (waveformHeight - barH) / 2
           
-          printCtx.fillRect(x, y, barWidth, barHeight)
+          printCtx.beginPath()
+          printCtx.roundRect(x, y, printWideBarWidth, barH, 4)
+          printCtx.fill()
         }
         break
         
@@ -768,10 +815,18 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
           const x = waveformX + (i / normalizedData.length) * waveformWidth
           const centerY = waveformY + waveformHeight / 2
           
-          // Top half
+          // Top half - use main waveform fill style
+          printCtx.fillStyle = waveformFillStyle
           printCtx.fillRect(x, centerY - barHeight, barWidth, barHeight)
-          // Bottom half
+          
+          // Bottom half - use secondary color if two colors enabled
+          if (currentMirrorUseTwoColors) {
+            printCtx.fillStyle = currentMirrorSecondaryColor
+          }
           printCtx.fillRect(x, centerY, barWidth, barHeight)
+          
+          // Reset fill style back to waveform style
+          printCtx.fillStyle = waveformFillStyle
         }
         break
         
@@ -793,51 +848,25 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         break
         
       case 'circular':
-        // Circular visualization - PRINT
-        const printCenterX = printCanvas.width / 2
-        const printCenterY = printCanvas.height / 2
-        const printRadius = Math.min(waveformWidth, waveformHeight) * 0.35
+        // Circular visualization - PRINT - use waveformCenterX/Y for position
+        // circleRadiusSetting is 20-200, map to 0.1-0.5 of min dimension
+        const printRadius = Math.min(waveformWidth, waveformHeight) * (currentCircleRadius / 400)
         
-        printCtx.lineWidth = 12
+        // Use barWidth for line thickness, scaled for print resolution (barWidth 1-10 maps to ~3-30px)
+        printCtx.lineWidth = currentBarWidth * 3
         printCtx.strokeStyle = waveformFillStyle // Support gradient
         
         for (let i = 0; i < normalizedData.length; i++) {
           const angle = (i / normalizedData.length) * Math.PI * 2 - Math.PI / 2
-          const amplitude = normalizedData[i] * printRadius * 1.2
+          const amplitude = normalizedData[i] * printRadius * 1.2 * (currentWaveformHeightMultiplier / 100)
           const innerRadius = printRadius - amplitude / 2
           const outerRadius = printRadius + amplitude / 2
           
-          const x1 = printCenterX + Math.cos(angle) * innerRadius
-          const y1 = printCenterY + Math.sin(angle) * innerRadius
-          const x2 = printCenterX + Math.cos(angle) * outerRadius
-          const y2 = printCenterY + Math.sin(angle) * outerRadius
+          const x1 = waveformCenterX + Math.cos(angle) * innerRadius
+          const y1 = waveformCenterY + Math.sin(angle) * innerRadius
+          const x2 = waveformCenterX + Math.cos(angle) * outerRadius
+          const y2 = waveformCenterY + Math.sin(angle) * outerRadius
           
-          printCtx.beginPath()
-          printCtx.moveTo(x1, y1)
-          printCtx.lineTo(x2, y2)
-          printCtx.stroke()
-        }
-        break
-        
-      case 'radial':
-        // Radial burst effect - PRINT
-        const radialCenterX = printCanvas.width / 2
-        const radialCenterY = printCanvas.height / 2
-        const maxRadius = Math.min(waveformWidth, waveformHeight) * 0.65
-        
-        printCtx.lineWidth = 8
-        printCtx.lineCap = 'round'
-        
-        for (let i = 0; i < normalizedData.length; i++) {
-          const angle = (i / normalizedData.length) * Math.PI * 2
-          const length = normalizedData[i] * maxRadius
-          
-          const x1 = radialCenterX
-          const y1 = radialCenterY
-          const x2 = radialCenterX + Math.cos(angle) * length
-          const y2 = radialCenterY + Math.sin(angle) * length
-          
-          printCtx.strokeStyle = waveformFillStyle
           printCtx.beginPath()
           printCtx.moveTo(x1, y1)
           printCtx.lineTo(x2, y2)
@@ -870,19 +899,18 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         break
         
       case 'galaxy':
-        // Cosmic galaxy effect - PRINT
+        // Cosmic galaxy effect - PRINT - use waveformCenterX/Y for position
         if (normalizedData.length > 0) {
-          const galaxyCenterX = printCanvas.width / 2
-          const galaxyCenterY = printCanvas.height / 2
-          const galaxyRadius = Math.min(waveformWidth, waveformHeight) * 0.35
+          // Use circleRadiusSetting for galaxy radius too
+          const galaxyRadius = Math.min(waveformWidth, waveformHeight) * (currentCircleRadius / 400)
           
           for (let i = 0; i < normalizedData.length; i++) {
             const angle = (i / normalizedData.length) * Math.PI * 2
             const distance = galaxyRadius * (0.5 + normalizedData[i] * 0.5)
             
             const swirl = (i / normalizedData.length) * Math.PI * 4
-            const x = galaxyCenterX + Math.cos(angle + swirl * 0.3) * distance
-            const y = galaxyCenterY + Math.sin(angle + swirl * 0.3) * distance
+            const x = waveformCenterX + Math.cos(angle + swirl * 0.3) * distance
+            const y = waveformCenterY + Math.sin(angle + swirl * 0.3) * distance
             
             const size = 4 + normalizedData[i] * 8
             const opacity = 0.3 + normalizedData[i] * 0.7
@@ -901,18 +929,16 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         break
         
       case 'particle':
-        // Particle cloud - PRINT
+        // Particle cloud - PRINT - use waveformCenterX/Y for position
         if (normalizedData.length > 0) {
-          const particleCenterX = printCanvas.width / 2
-          const particleCenterY = printCanvas.height / 2
           const particleSpread = Math.min(waveformWidth, waveformHeight) * 0.4
           
           for (let i = 0; i < normalizedData.length; i++) {
             const angle = (i / normalizedData.length) * Math.PI * 2
             const distance = (Math.random() * 0.5 + 0.5) * particleSpread * normalizedData[i]
             
-            const x = particleCenterX + Math.cos(angle) * distance
-            const y = particleCenterY + Math.sin(angle) * distance
+            const x = waveformCenterX + Math.cos(angle) * distance
+            const y = waveformCenterY + Math.sin(angle) * distance
             
             const size = 2 + normalizedData[i] * 10
             const opacity = 0.4 + normalizedData[i] * 0.6
@@ -926,10 +952,8 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         break
         
       case 'ripple':
-        // Water ripple effect - PRINT
+        // Water ripple effect - PRINT - use waveformCenterX/Y for position
         if (normalizedData.length > 0) {
-          const rippleCenterX = printCanvas.width / 2
-          const rippleCenterY = printCanvas.height / 2
           const maxRippleRadius = Math.min(waveformWidth, waveformHeight) * 0.45
           const numRipples = 8
           
@@ -946,8 +970,8 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
               const rippleEffect = normalizedData[i] * 30
               const radius = baseRadius + rippleEffect
               
-              const x = rippleCenterX + Math.cos(angle) * radius
-              const y = rippleCenterY + Math.sin(angle) * radius
+              const x = waveformCenterX + Math.cos(angle) * radius
+              const y = waveformCenterY + Math.sin(angle) * radius
               
               if (i === 0) printCtx.moveTo(x, y)
               else printCtx.lineTo(x, y)
@@ -998,6 +1022,149 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         }
         printCtx.shadowBlur = 0
         break
+
+      case 'image-mask':
+        // Solid waveform shape that clips/masks an image behind it (PRINT)
+        if (normalizedData.length >= 2) {
+          const printMaskCenterY = waveformY + waveformHeight / 2
+          
+          // Check if there's a background image to use as mask fill
+          if (currentBackgroundImage) {
+            // Create a temporary canvas for the mask
+            const printMaskCanvas = document.createElement('canvas')
+            printMaskCanvas.width = printCanvas.width
+            printMaskCanvas.height = printCanvas.height
+            const printMaskCtx = printMaskCanvas.getContext('2d')
+            
+            if (printMaskCtx) {
+              // Draw the waveform shape as a mask
+              printMaskCtx.beginPath()
+              
+              // Top edge
+              for (let i = 0; i < normalizedData.length; i++) {
+                const x = waveformX + (i / normalizedData.length) * waveformWidth
+                const amplitude = normalizedData[i] * (waveformHeight / 2)
+                const y = printMaskCenterY - amplitude
+                
+                if (i === 0) {
+                  printMaskCtx.moveTo(x, y)
+                } else {
+                  const prevX = waveformX + ((i - 1) / normalizedData.length) * waveformWidth
+                  const prevAmplitude = normalizedData[i - 1] * (waveformHeight / 2)
+                  const prevY = printMaskCenterY - prevAmplitude
+                  const cpX = (prevX + x) / 2
+                  const cpY = (prevY + y) / 2
+                  printMaskCtx.quadraticCurveTo(prevX, prevY, cpX, cpY)
+                }
+              }
+              
+              // Bottom edge (reverse)
+              for (let i = normalizedData.length - 1; i >= 0; i--) {
+                const x = waveformX + (i / normalizedData.length) * waveformWidth
+                const amplitude = normalizedData[i] * (waveformHeight / 2)
+                const y = printMaskCenterY + amplitude
+                
+                if (i === normalizedData.length - 1) {
+                  printMaskCtx.lineTo(x, y)
+                } else {
+                  const nextX = waveformX + ((i + 1) / normalizedData.length) * waveformWidth
+                  const nextAmplitude = normalizedData[i + 1] * (waveformHeight / 2)
+                  const nextY = printMaskCenterY + nextAmplitude
+                  const cpX = (nextX + x) / 2
+                  const cpY = (nextY + y) / 2
+                  printMaskCtx.quadraticCurveTo(nextX, nextY, cpX, cpY)
+                }
+              }
+              
+              printMaskCtx.closePath()
+              printMaskCtx.fillStyle = '#000'
+              printMaskCtx.fill()
+              
+              // Load and draw the background image clipped by the mask
+              const printMaskImage = new Image()
+              printMaskImage.crossOrigin = 'anonymous'
+              await new Promise<void>((resolve) => {
+                printMaskImage.onload = () => {
+                  printMaskCtx.globalCompositeOperation = 'source-in'
+                  
+                  const imgAspect = printMaskImage.width / printMaskImage.height
+                  const waveformAspect = waveformWidth / waveformHeight
+                  
+                  let drawWidth, drawHeight, drawX, drawY
+                  
+                  if (imgAspect > waveformAspect) {
+                    drawHeight = waveformHeight * 1.2
+                    drawWidth = drawHeight * imgAspect
+                    drawX = waveformX + (waveformWidth - drawWidth) / 2
+                    drawY = waveformY - (drawHeight - waveformHeight) / 2
+                  } else {
+                    drawWidth = waveformWidth * 1.2
+                    drawHeight = drawWidth / imgAspect
+                    drawX = waveformX - (drawWidth - waveformWidth) / 2
+                    drawY = waveformY + (waveformHeight - drawHeight) / 2
+                  }
+                  
+                  printMaskCtx.drawImage(printMaskImage, drawX, drawY, drawWidth, drawHeight)
+                  printCtx.drawImage(printMaskCanvas, 0, 0)
+                  resolve()
+                }
+                printMaskImage.onerror = () => resolve()
+                printMaskImage.src = currentBackgroundImage
+              })
+            }
+          } else {
+            // No background image - use gradient fill
+            printCtx.beginPath()
+            
+            // Top edge
+            for (let i = 0; i < normalizedData.length; i++) {
+              const x = waveformX + (i / normalizedData.length) * waveformWidth
+              const amplitude = normalizedData[i] * (waveformHeight / 2)
+              const y = printMaskCenterY - amplitude
+              
+              if (i === 0) {
+                printCtx.moveTo(x, y)
+              } else {
+                const prevX = waveformX + ((i - 1) / normalizedData.length) * waveformWidth
+                const prevAmplitude = normalizedData[i - 1] * (waveformHeight / 2)
+                const prevY = printMaskCenterY - prevAmplitude
+                const cpX = (prevX + x) / 2
+                const cpY = (prevY + y) / 2
+                printCtx.quadraticCurveTo(prevX, prevY, cpX, cpY)
+              }
+            }
+            
+            // Bottom edge (reverse)
+            for (let i = normalizedData.length - 1; i >= 0; i--) {
+              const x = waveformX + (i / normalizedData.length) * waveformWidth
+              const amplitude = normalizedData[i] * (waveformHeight / 2)
+              const y = printMaskCenterY + amplitude
+              
+              if (i === normalizedData.length - 1) {
+                printCtx.lineTo(x, y)
+              } else {
+                const nextX = waveformX + ((i + 1) / normalizedData.length) * waveformWidth
+                const nextAmplitude = normalizedData[i + 1] * (waveformHeight / 2)
+                const nextY = printMaskCenterY + nextAmplitude
+                const cpX = (nextX + x) / 2
+                const cpY = (nextY + y) / 2
+                printCtx.quadraticCurveTo(nextX, nextY, cpX, cpY)
+              }
+            }
+            
+            printCtx.closePath()
+            
+            // Create gradient fill
+            const printImageMaskGradient = printCtx.createLinearGradient(waveformX, waveformY, waveformX + waveformWidth, waveformY + waveformHeight)
+            printImageMaskGradient.addColorStop(0, '#3b82f6')
+            printImageMaskGradient.addColorStop(0.5, '#8b5cf6')
+            printImageMaskGradient.addColorStop(1, '#ec4899')
+            
+            printCtx.fillStyle = currentWaveformUseGradient ? waveformFillStyle : printImageMaskGradient
+            printCtx.fill()
+          }
+        }
+        break
         
       default:
         // Fallback to bars
@@ -1029,6 +1196,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       try {
         // Use customizable size (percentage of canvas width)
         const qrSize = Math.floor(printCanvas.width * (currentQrCodeSize / 100))
+        const QRCode = await getQRCode()
         const qrDataUrl = await QRCode.toDataURL(currentQrCodeUrl, {
           width: qrSize,
           margin: 1,
@@ -1071,56 +1239,107 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     getPrintFile
   }), [getPrintFile])
   
-  const audioUrl = useCustomizerStore((state) => state.audioUrl)
-  const waveformColor = useCustomizerStore((state) => state.waveformColor)
-  const waveformUseGradient = useCustomizerStore((state) => state.waveformUseGradient)
-  const waveformGradientStops = useCustomizerStore((state) => state.waveformGradientStops)
-  const waveformGradientDirection = useCustomizerStore((state) => state.waveformGradientDirection)
-  const backgroundColor = useCustomizerStore((state) => state.backgroundColor)
-  const backgroundUseGradient = useCustomizerStore((state) => state.backgroundUseGradient)
-  const backgroundGradientStops = useCustomizerStore((state) => state.backgroundGradientStops)
-  const backgroundGradientDirection = useCustomizerStore((state) => state.backgroundGradientDirection)
-  const selectedProduct = useCustomizerStore((state) => state.selectedProduct)
-  const selectedSize = useCustomizerStore((state) => state.selectedSize)
-  const selectedRegion = useCustomizerStore((state) => state.selectedRegion)
-  const waveformStyle = useCustomizerStore((state) => state.waveformStyle)
-  const waveformSize = useCustomizerStore((state) => state.waveformSize) || 50
-  const waveformHeightMultiplier = useCustomizerStore((state) => state.waveformHeightMultiplier) || 100
-  const showText = useCustomizerStore((state) => state.showText)
-  const songTitle = useCustomizerStore((state) => state.songTitle)
-  const artistName = useCustomizerStore((state) => state.artistName)
-  const customDate = useCustomizerStore((state) => state.customDate)
-  const customText = useCustomizerStore((state) => state.customText)
-  const textColor = useCustomizerStore((state) => state.textColor)
-  const textUseGradient = useCustomizerStore((state) => state.textUseGradient)
-  const textGradientStops = useCustomizerStore((state) => state.textGradientStops)
-  const textGradientDirection = useCustomizerStore((state) => state.textGradientDirection)
-  const textX = useCustomizerStore((state) => state.textX)
-  const textY = useCustomizerStore((state) => state.textY)
-  const fontFamily = useCustomizerStore((state) => state.fontFamily)
-  const fontSize = useCustomizerStore((state) => state.fontSize)
-  const backgroundImage = useCustomizerStore((state) => state.backgroundImage)
-  const backgroundImagePosition = useCustomizerStore((state) => state.backgroundImagePosition)
-  const backgroundFocalPoint = useCustomizerStore((state) => state.backgroundFocalPoint)
-  const showQRCode = useCustomizerStore((state) => state.showQRCode)
-  const qrCodeUrl = useCustomizerStore((state) => state.qrCodeUrl)
-  const qrCodePosition = useCustomizerStore((state) => state.qrCodePosition)
-  const qrCodeSize = useCustomizerStore((state) => state.qrCodeSize) || 8
-  const qrCodeX = useCustomizerStore((state) => state.qrCodeX) || 85
-  const qrCodeY = useCustomizerStore((state) => state.qrCodeY) || 85
-  const detectedWords = useCustomizerStore((state) => state.detectedWords)
-  const showArtisticText = useCustomizerStore((state) => state.showArtisticText)
-  const artisticTextStyle = useCustomizerStore((state) => state.artisticTextStyle)
-  const artisticTextColor = useCustomizerStore((state) => state.artisticTextColor)
-  const artisticTextOpacity = useCustomizerStore((state) => state.artisticTextOpacity)
+  // Use single grouped selector instead of 53 individual subscriptions
+  const config = useProductMockupConfig()
+  
+  // Destructure with defaults for easier use throughout component
+  const audioUrl = config.audioUrl
+  const waveformColor = config.waveformColor
+  const waveformUseGradient = config.waveformUseGradient
+  const waveformGradientStops = config.waveformGradientStops
+  const waveformGradientDirection = config.waveformGradientDirection
+  const backgroundColor = config.backgroundColor
+  const backgroundUseGradient = config.backgroundUseGradient
+  const backgroundGradientStops = config.backgroundGradientStops
+  const backgroundGradientDirection = config.backgroundGradientDirection
+  const selectedProduct = config.selectedProduct
+  const selectedSize = config.selectedSize
+  const selectedRegion = config.selectedRegion
+  const waveformStyle = config.waveformStyle
+  const waveformSize = config.waveformSize || 50
+  const waveformHeightMultiplier = config.waveformHeightMultiplier || 100
+  const waveformXPos = config.waveformX ?? 50
+  const waveformYPos = config.waveformY ?? 50
+  const showText = config.showText
+  const songTitle = config.songTitle
+  const artistName = config.artistName
+  const customDate = config.customDate
+  const customText = config.customText
+  const textColor = config.textColor
+  const textUseGradient = config.textUseGradient
+  const textGradientStops = config.textGradientStops
+  const textGradientDirection = config.textGradientDirection
+  const textX = config.textX
+  const textY = config.textY
+  const fontFamily = config.fontFamily
+  const fontSize = config.fontSize
+  const backgroundImage = config.backgroundImage
+  const backgroundImagePosition = config.backgroundImagePosition
+  const backgroundFocalPoint = config.backgroundFocalPoint
+  const showQRCode = config.showQRCode
+  const qrCodeUrl = config.qrCodeUrl
+  const qrCodePosition = config.qrCodePosition
+  const qrCodeSize = config.qrCodeSize || 8
+  const qrCodeX = config.qrCodeX || 85
+  const qrCodeY = config.qrCodeY || 85
+  const detectedWords = config.detectedWords
+  const showArtisticText = config.showArtisticText
+  const artisticTextStyle = config.artisticTextStyle
+  const artisticTextColor = config.artisticTextColor
+  const artisticTextOpacity = config.artisticTextOpacity
+  const textElements = config.textElements
+  const barWidthSetting = config.barWidth ?? 6
+  const barGapSetting = config.barGap ?? 1
+  const circleRadiusSetting = config.circleRadius ?? 50
+  const mirrorUseTwoColors = config.mirrorUseTwoColors ?? false
+  const mirrorSecondaryColor = config.mirrorSecondaryColor ?? '#888888'
+  const imageMaskImage = config.imageMaskImage
+  const imageMaskShape = config.imageMaskShape ?? 'normal'
+  const imageMaskFocalPoint = config.imageMaskFocalPoint
+
+  // Pre-load and cache the mask image when it changes
+  useEffect(() => {
+    if (!imageMaskImage) {
+      cachedMaskImageRef.current = null
+      return
+    }
+    
+    // Check if already cached
+    if (cachedMaskImageRef.current?.url === imageMaskImage) {
+      return
+    }
+    
+    console.log('🖼️ Pre-loading mask image...')
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      console.log('✅ Mask image pre-loaded and cached')
+      cachedMaskImageRef.current = { url: imageMaskImage, image: img }
+      // Trigger a re-render by invalidating the waveform cache
+      lastWaveformKey.current = ''
+    }
+    img.onerror = () => {
+      console.error('❌ Failed to pre-load mask image')
+      cachedMaskImageRef.current = null
+    }
+    img.src = imageMaskImage
+  }, [imageMaskImage])
 
   // Load Google Font for canvas rendering
   useEffect(() => {
-    // Reset fontLoaded to false when font changes to trigger re-render after loading
-    setFontLoaded(false)
-    
     if (fontFamily && fontFamily !== 'Arial' && fontFamily !== 'sans-serif') {
       const fontLinkId = `font-${fontFamily.replace(/\s+/g, '-')}`
+      const fontSpec = `400 16px "${fontFamily}"`
+      
+      // Check if font is already loaded/cached
+      if (document.fonts && document.fonts.check(fontSpec)) {
+        console.log('✅ Font already cached:', fontFamily)
+        setFontLoaded(true)
+        return
+      }
+      
+      // Reset fontLoaded only if font is not already available
+      setFontLoaded(false)
       
       if (!document.getElementById(fontLinkId)) {
         const link = document.createElement('link')
@@ -1132,7 +1351,6 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       
       // Wait for the SPECIFIC font to load with a timeout fallback
       if (document.fonts) {
-        const fontSpec = `400 16px "${fontFamily}"`
         console.log('🔤 Loading font:', fontSpec)
         
         // Use Promise.race to add a timeout
@@ -1203,8 +1421,19 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     
     if (!canvasRef.current) return
 
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')
+    const visibleCanvas = canvasRef.current
+    const visibleCtx = visibleCanvas.getContext('2d')
+    if (!visibleCtx) return
+    
+    // Create or reuse offscreen canvas for double-buffering
+    // This prevents the visible canvas from flickering during render
+    if (!offscreenCanvasRef.current) {
+      offscreenCanvasRef.current = document.createElement('canvas')
+    }
+    const canvas = offscreenCanvasRef.current  // Use offscreen as "canvas" for all rendering
+    canvas.width = canvasWidth
+    canvas.height = canvasHeight
+    const ctx = canvas.getContext('2d')  // All rendering goes to offscreen ctx
     if (!ctx) return
     
     // Track if this render is still valid
@@ -1225,6 +1454,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     const isFullAudio = !selectedRegion || (regionStart === 0 && selectedRegion.end >= audioDur - 0.1)
     
     // Create a key for ONLY waveform properties (audio data and waveform styling)
+    // NOTE: Position (waveformXPos, waveformYPos) is handled separately for smooth dragging
     const waveformKey = JSON.stringify({
       audioUrl,
       waveformColor,
@@ -1234,6 +1464,9 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       waveformStyle,
       waveformSize,
       waveformHeightMultiplier,
+      barWidthSetting,
+      barGapSetting,
+      circleRadiusSetting,
       backgroundColor,
       backgroundUseGradient,
       backgroundGradientStops,
@@ -1241,6 +1474,9 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       backgroundImage,
       backgroundImagePosition,
       backgroundFocalPoint,
+      imageMaskImage,
+      imageMaskShape,
+      imageMaskFocalPoint,
       selectedProduct,
       selectedSize,
       // Use stable region representation - treat full audio the same whether null or explicit
@@ -1261,6 +1497,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       textGradientDirection,
       textX,
       textY,
+      textElements, // Multiple text elements
       showQRCode,
       qrCodeUrl,
       qrCodePosition,
@@ -1269,9 +1506,16 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
       qrCodeY
     })
     
+    // Create a key for position-only changes (for smooth dragging)
+    const positionKey = JSON.stringify({
+      waveformXPos,
+      waveformYPos,
+    })
+    
     // Detect what changed
     const waveformChanged = waveformKey !== lastWaveformKey.current
     const overlayChanged = overlayKey !== lastOverlayKey.current
+    const positionChanged = positionKey !== lastPositionKey.current
     const canUseCache = !!waveformImageData.current
     
     console.log('🔄 MAIN RENDER CHECK:', {
@@ -1295,14 +1539,109 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     console.log('🔍 Render decision:', {
       waveformChanged,
       overlayChanged,
+      positionChanged,
       canUseCache,
       willUseOverlayFastPath: !waveformChanged && overlayChanged && canUseCache,
+      willUsePositionFastPath: !waveformChanged && !overlayChanged && positionChanged,
       willDoFullRegen: waveformChanged,
       waveformSize
     })
     
+    // FAST POSITION PATH: Use cached normalized data to redraw waveform at new position
+    // This skips ALL audio processing - we just redraw the same bars at new coordinates
+    const hasCachedData = cachedWaveformDataRef.current && cachedBackgroundCanvasRef.current
+    if (!waveformChanged && positionChanged && hasCachedData && waveformStyle === 'bars') {
+      console.log('⚡ FAST POSITION PATH: Using cached waveform data')
+      lastPositionKey.current = positionKey
+      
+      const cached = cachedWaveformDataRef.current!
+      const bgCanvas = cachedBackgroundCanvasRef.current!
+      
+      // Restore background
+      ctx.drawImage(bgCanvas, 0, 0)
+      
+      // Calculate new waveform position
+      const waveformCenterX = (waveformXPos / 100) * canvas.width
+      const waveformCenterY = (waveformYPos / 100) * canvas.height
+      const newWaveformX = waveformCenterX - cached.waveformWidth / 2
+      const newWaveformY = waveformCenterY - cached.waveformHeight / 2
+      
+      // Set up fill style - handle gradients
+      let fillStyle: string | CanvasGradient = waveformColor
+      if (waveformUseGradient && waveformGradientStops && waveformGradientStops.length >= 2) {
+        let gradient
+        if (waveformGradientDirection === 'radial') {
+          gradient = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, 0, canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2)
+        } else if (waveformGradientDirection === 'horizontal') {
+          gradient = ctx.createLinearGradient(newWaveformX, 0, newWaveformX + cached.waveformWidth, 0)
+        } else if (waveformGradientDirection === 'vertical') {
+          gradient = ctx.createLinearGradient(0, newWaveformY, 0, newWaveformY + cached.waveformHeight)
+        } else {
+          gradient = ctx.createLinearGradient(newWaveformX, newWaveformY, newWaveformX + cached.waveformWidth, newWaveformY + cached.waveformHeight)
+        }
+        [...waveformGradientStops].sort((a, b) => a.position - b.position).forEach(stop => gradient.addColorStop(stop.position, stop.color))
+        fillStyle = gradient
+      }
+      ctx.fillStyle = fillStyle
+      
+      // Redraw bars at new position (FAST - just drawing, no calculation)
+      const { normalizedData, waveformWidth, waveformHeight, barWidth } = cached
+      for (let i = 0; i < normalizedData.length; i++) {
+        const barHeight = normalizedData[i] * waveformHeight
+        const x = Math.round(newWaveformX + (i / normalizedData.length) * waveformWidth)
+        const y = Math.round(newWaveformY + (waveformHeight - barHeight) / 2)
+        
+        ctx.beginPath()
+        ctx.roundRect(x, y, barWidth, Math.round(barHeight), 2)
+        ctx.fill()
+      }
+      
+      // Cache this render for overlay fast path
+      waveformImageData.current = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      
+      // Render overlays (skip if hideOverlays is true - InteractiveCanvasEditor will handle them)
+      if (!hideOverlays) {
+        const state = useCustomizerStore.getState()
+        if (state.showText && state.customText) {
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.font = `${state.fontSize}px "${state.fontFamily}", sans-serif`
+          ctx.fillStyle = state.textColor
+          const textXPos = (state.textX / 100) * canvas.width
+          const textYPos = (state.textY / 100) * canvas.height
+          ctx.fillText(state.customText, textXPos, textYPos)
+        }
+        
+        // Render multiple text elements in position fast path
+        for (const element of state.textElements || []) {
+          if (!element.visible || !element.text) continue
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.font = `${element.fontSize}px "${element.fontFamily}", sans-serif`
+          ctx.fillStyle = element.color
+          const elemXPos = (element.x / 100) * canvas.width
+          const elemYPos = (element.y / 100) * canvas.height
+          ctx.fillText(element.text, elemXPos, elemYPos)
+        }
+      }
+      
+      // Copy to visible canvas
+      visibleCanvas.width = canvas.width
+      visibleCanvas.height = canvas.height
+      visibleCtx.drawImage(canvas, 0, 0)
+      console.log('⚡ FAST POSITION PATH complete')
+      return
+    }
+    
+    // Fallback for position change without cache
+    if (!waveformChanged && positionChanged && !hasCachedData) {
+      console.log('📍 POSITION CHANGE: No cache, doing full re-render')
+      lastPositionKey.current = positionKey
+      // Fall through to full render
+    }
+    
     // If waveform unchanged but overlay changed, use overlay fast path
-    if (!waveformChanged && overlayChanged && canUseCache) {
+    if (!waveformChanged && overlayChanged && canUseCache && !positionChanged) {
       console.log('✨ OVERLAY FAST PATH: Restoring waveform and redrawing overlays')
       
       lastOverlayKey.current = overlayKey
@@ -1313,8 +1652,9 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         console.log('✅ Restored waveform from cache')
       }
       
-      // Render text overlay
-      const state = useCustomizerStore.getState()
+      // Render text overlay (skip if hideOverlays is true - InteractiveCanvasEditor will handle them)
+      if (!hideOverlays) {
+        const state = useCustomizerStore.getState()
       if (state.showText && state.customText) {
         // Wait for font to be ready before rendering
         const fontSpec = `${state.fontSize}px "${state.fontFamily}"`
@@ -1364,11 +1704,50 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         ctx.fillText(state.customText, textXPos, textYPos)
       }
       
+      // Render multiple text elements in fast path
+      for (const element of state.textElements || []) {
+        if (!element.visible || !element.text) continue
+        
+        const elemFontSpec = `${element.fontSize}px "${element.fontFamily}"`
+        if (document.fonts && element.fontFamily !== 'Arial' && element.fontFamily !== 'sans-serif') {
+          await document.fonts.load(elemFontSpec).catch(() => {})
+        }
+        
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.font = `${element.fontSize}px "${element.fontFamily}", sans-serif`
+        
+        const elemXPos = (element.x / 100) * canvas.width
+        const elemYPos = (element.y / 100) * canvas.height
+        
+        if (element.useGradient && element.gradientStops.length >= 2) {
+          let elemGradient
+          if (element.gradientDirection === 'radial') {
+            elemGradient = ctx.createRadialGradient(elemXPos, elemYPos, 0, elemXPos, elemYPos, element.fontSize * 2)
+          } else if (element.gradientDirection === 'horizontal') {
+            elemGradient = ctx.createLinearGradient(elemXPos - element.fontSize * 2, elemYPos, elemXPos + element.fontSize * 2, elemYPos)
+          } else if (element.gradientDirection === 'vertical') {
+            elemGradient = ctx.createLinearGradient(elemXPos, elemYPos - element.fontSize, elemXPos, elemYPos + element.fontSize)
+          } else {
+            elemGradient = ctx.createLinearGradient(elemXPos - element.fontSize, elemYPos - element.fontSize, elemXPos + element.fontSize, elemYPos + element.fontSize)
+          }
+          [...element.gradientStops].sort((a, b) => a.position - b.position).forEach(stop => {
+            elemGradient.addColorStop(stop.position, stop.color)
+          })
+          ctx.fillStyle = elemGradient
+        } else {
+          ctx.fillStyle = element.color
+        }
+        
+        ctx.fillText(element.text, elemXPos, elemYPos)
+      }
+      
       // Render QR overlay - await to prevent duplicates when position changes quickly
       if (state.showQRCode && state.qrCodeUrl) {
         try {
           const qrSizePercent = state.qrCodeSize || 8
           const qrSize = Math.floor(canvas.width * (qrSizePercent / 100))
+          const QRCode = await getQRCode()
           const qrDataUrl = await QRCode.toDataURL(state.qrCodeUrl, { 
             width: qrSize, 
             margin: 1,
@@ -1405,12 +1784,17 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
           console.error('QR code rendering error:', error)
         }
       }
+      } // End of hideOverlays check for overlay fast path
+      // Copy offscreen to visible canvas (double buffering)
+      visibleCanvas.width = canvas.width
+      visibleCanvas.height = canvas.height
+      visibleCtx.drawImage(canvas, 0, 0)
       console.log('✨ OVERLAY FAST PATH complete')
       return
     }
     
     // If nothing changed, skip render
-    if (!waveformChanged && !overlayChanged) {
+    if (!waveformChanged && !overlayChanged && !positionChanged) {
       console.log('⏭️ No changes detected, skipping render')
       return
     }
@@ -1422,6 +1806,7 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     
     lastWaveformKey.current = waveformKey
     lastOverlayKey.current = overlayKey
+    lastPositionKey.current = positionKey
     
     // Draw background
     ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -1460,6 +1845,10 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     
     if (!audioUrl || !canvasReady) {
       console.log('Skipping waveform generation:', { audioUrl: !!audioUrl, canvasReady })
+      // Copy offscreen to visible even for background-only renders
+      visibleCanvas.width = canvas.width
+      visibleCanvas.height = canvas.height
+      visibleCtx.drawImage(canvas, 0, 0)
       setIsGenerating(false)
       return
     }
@@ -1467,19 +1856,29 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     console.log('Starting waveform generation...')
     setIsGenerating(true)
 
-    fetch(audioUrl)
-      .then(response => {
-        console.log('Fetch response:', response.status)
-        return response.arrayBuffer()
-      })
-      .then(arrayBuffer => {
-        console.log('Got arrayBuffer, size:', arrayBuffer.byteLength)
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-        return audioContext.decodeAudioData(arrayBuffer)
-      })
+    // Use cached audio if available and URL matches
+    const getAudioBuffer = async (): Promise<AudioBuffer> => {
+      if (cachedAudioRef.current && cachedAudioRef.current.url === audioUrl) {
+        console.log('🎵 Using cached audio buffer (skipping fetch/decode)')
+        return cachedAudioRef.current.buffer
+      }
+      
+      console.log('🎵 Fetching and decoding audio...')
+      const response = await fetch(audioUrl)
+      console.log('Fetch response:', response.status)
+      const arrayBuffer = await response.arrayBuffer()
+      console.log('Got arrayBuffer, size:', arrayBuffer.byteLength)
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const buffer = await audioContext.decodeAudioData(arrayBuffer)
+      console.log('Decoded audio, duration:', buffer.duration)
+      
+      // Cache for future use
+      cachedAudioRef.current = { url: audioUrl, buffer }
+      return buffer
+    }
+
+    getAudioBuffer()
       .then(audioBuffer => {
-        console.log('Decoded audio, duration:', audioBuffer.duration)
-        
         // Draw background image if provided (wait for it to load)
         const backgroundPromise = backgroundImage
           ? new Promise<void>((resolve) => {
@@ -1559,6 +1958,19 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
           return
         }
         
+        // CACHE THE BACKGROUND for fast position updates
+        // This saves us from having to redraw background on every position change
+        if (!cachedBackgroundCanvasRef.current) {
+          cachedBackgroundCanvasRef.current = document.createElement('canvas')
+        }
+        cachedBackgroundCanvasRef.current.width = canvas.width
+        cachedBackgroundCanvasRef.current.height = canvas.height
+        const bgCtx = cachedBackgroundCanvasRef.current.getContext('2d')
+        if (bgCtx) {
+          bgCtx.drawImage(canvas, 0, 0)
+          console.log('💾 Cached background canvas')
+        }
+        
         const rawData = audioBuffer.getChannelData(0)
         const sampleRate = audioBuffer.sampleRate
         
@@ -1629,14 +2041,17 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         // Clamp both width and height to prevent overflow, leaving buffer
         const waveformWidth = Math.min(unclampedWaveformWidth, maxAllowedWidth)
         const waveformHeight = Math.min(unclamppedWaveformHeight, maxAllowedHeight)
-        const padding = (canvas.width - waveformWidth) / 2
-        const waveformX = padding
-        const waveformY = (canvas.height - waveformHeight) / 2
+        
+        // Use waveformX/Y position (percentage-based, 50 = center)
+        const waveformCenterX = (waveformXPos / 100) * canvas.width
+        const waveformCenterY = (waveformYPos / 100) * canvas.height
+        const waveformX = waveformCenterX - waveformWidth / 2
+        const waveformY = waveformCenterY - waveformHeight / 2
         
         console.log('📐 Waveform dimensions:', { waveformSize, waveformWidth, waveformHeight, unclamped: unclamppedWaveformHeight, maxAllowed: maxAllowedHeight, canvasWidth: canvas.width, canvasHeight: canvas.height })
         
-        const barWidth = 6
-        const barGap = 1
+        const barWidth = barWidthSetting
+        const barGap = barGapSetting
         const barTotalWidth = barWidth + barGap
         // Calculate samples based on waveformWidth for proper proportional sizing
         const samples = Math.floor(waveformWidth / barTotalWidth)
@@ -1664,6 +2079,17 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         // Use global max from entire audio instead of just the filtered region
         // Apply amplitude multiplier to make bars "louder" - clamp to 1.0 to prevent overflow
         const normalizedData = filteredData.map(n => Math.min(1, (n / globalMax) * amplitudeMultiplier))
+        
+        // Cache the normalized data for fast position updates
+        cachedWaveformDataRef.current = {
+          normalizedData: [...normalizedData], // Copy array
+          waveformWidth,
+          waveformHeight,
+          barWidth,
+          barGap,
+          key: waveformKey // Use the same key to know when to invalidate
+        }
+        console.log('💾 Cached normalized waveform data for fast repositioning')
         
         // Create waveform color or gradient
         let waveformFillStyle: string | CanvasGradient
@@ -1718,14 +2144,21 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
         // Render based on selected style
         switch (waveformStyle) {
           case 'bars':
-            // Classic vertical bars - scale positions to fit within waveformWidth
-            for (let i = 0; i < normalizedData.length; i++) {
-              const barHeight = normalizedData[i] * waveformHeight
-              const x = Math.round(waveformX + (i / normalizedData.length) * waveformWidth)
-              const y = Math.round(waveformY + (waveformHeight - barHeight) / 2)
+            // Wide bars with spacing
+            const wideBarWidth = barWidth * 1.8
+            const wideBarGap = barGap * 3
+            const wideTotalWidth = wideBarWidth + wideBarGap
+            const wideSamples = Math.floor(waveformWidth / wideTotalWidth)
+            
+            // Resample data to fit fewer, wider bars
+            for (let i = 0; i < wideSamples; i++) {
+              const dataIndex = Math.floor((i / wideSamples) * normalizedData.length)
+              const barH = normalizedData[dataIndex] * waveformHeight
+              const x = Math.round(waveformX + i * wideTotalWidth)
+              const y = Math.round(waveformY + (waveformHeight - barH) / 2)
               
               ctx.beginPath()
-              ctx.roundRect(x, y, barWidth, Math.round(barHeight), 2)
+              ctx.roundRect(x, y, wideBarWidth, Math.round(barH), 4)
               ctx.fill()
             }
             break
@@ -1737,15 +2170,22 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
               const x = Math.round(waveformX + (i / normalizedData.length) * waveformWidth)
               const centerY = Math.round(waveformY + waveformHeight / 2)
               
-              // Top half
+              // Top half - use main waveform fill style
+              ctx.fillStyle = waveformFillStyle
               ctx.beginPath()
               ctx.roundRect(x, Math.round(centerY - barHeight), barWidth, Math.round(barHeight), 2)
               ctx.fill()
               
-              // Bottom half
+              // Bottom half - use secondary color if two colors enabled
+              if (mirrorUseTwoColors) {
+                ctx.fillStyle = mirrorSecondaryColor
+              }
               ctx.beginPath()
               ctx.roundRect(x, centerY, barWidth, Math.round(barHeight), 2)
               ctx.fill()
+              
+              // Reset fill style back to waveform style
+              ctx.fillStyle = waveformFillStyle
             }
             break
             
@@ -1768,13 +2208,15 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
             
           case 'circular':
             // Circular visualization with independent width/height control
-            const centerX = canvas.width / 2
-            const centerY = canvas.height / 2
-            // Use width for base radius, height for amplitude scaling
-            const baseRadius = waveformWidth * 0.35
+            // Use waveformCenterX/Y for position
+            const circCenterX = waveformCenterX
+            const circCenterY = waveformCenterY
+            // Use circleRadiusSetting for base radius (20-200 maps to 0.05-0.5)
+            const baseRadius = waveformWidth * (circleRadiusSetting / 400)
             const heightScale = (waveformHeight / waveformWidth) * ((waveformHeightMultiplier || 100) / 100)
             
-            ctx.lineWidth = 12
+            // Use barWidth for line thickness (barWidth 1-10 maps to ~3-30px for preview)
+            ctx.lineWidth = barWidthSetting * 3
             ctx.strokeStyle = waveformFillStyle // Support gradient
             
             for (let i = 0; i < normalizedData.length; i++) {
@@ -1783,36 +2225,10 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
               const innerRadius = baseRadius - amplitude / 2
               const outerRadius = baseRadius + amplitude / 2
               
-              const x1 = centerX + Math.cos(angle) * innerRadius
-              const y1 = centerY + Math.sin(angle) * innerRadius
-              const x2 = centerX + Math.cos(angle) * outerRadius
-              const y2 = centerY + Math.sin(angle) * outerRadius
-              
-              ctx.beginPath()
-              ctx.moveTo(x1, y1)
-              ctx.lineTo(x2, y2)
-              ctx.stroke()
-            }
-            break
-            
-          case 'radial':
-            // Radial burst effect
-            const radialCenterX = canvas.width / 2
-            const radialCenterY = canvas.height / 2
-            const maxRadius = Math.min(waveformWidth, waveformHeight) * 0.65
-            
-            for (let i = 0; i < normalizedData.length; i++) {
-              const angle = (i / normalizedData.length) * Math.PI * 2
-              const length = normalizedData[i] * maxRadius
-              
-              const x1 = radialCenterX
-              const y1 = radialCenterY
-              const x2 = radialCenterX + Math.cos(angle) * length
-              const y2 = radialCenterY + Math.sin(angle) * length
-              
-              ctx.strokeStyle = waveformFillStyle
-              ctx.lineWidth = 8
-              ctx.lineCap = 'round'
+              const x1 = circCenterX + Math.cos(angle) * innerRadius
+              const y1 = circCenterY + Math.sin(angle) * innerRadius
+              const x2 = circCenterX + Math.cos(angle) * outerRadius
+              const y2 = circCenterY + Math.sin(angle) * outerRadius
               
               ctx.beginPath()
               ctx.moveTo(x1, y1)
@@ -1822,10 +2238,11 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
             break
             
           case 'galaxy':
-            // Cosmic galaxy effect
-            const galaxyCenterX = canvas.width / 2
-            const galaxyCenterY = canvas.height / 2
-            const galaxyRadius = Math.min(waveformWidth, waveformHeight) * 0.35
+            // Cosmic galaxy effect - use waveformCenterX/Y for position
+            const galCenterX = waveformCenterX
+            const galCenterY = waveformCenterY
+            // Use circleRadiusSetting for galaxy radius
+            const galaxyRadius = Math.min(waveformWidth, waveformHeight) * (circleRadiusSetting / 400)
             
             if (normalizedData.length === 0) break
             
@@ -1835,8 +2252,8 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
               
               // Create swirling effect
               const swirl = (i / normalizedData.length) * Math.PI * 4
-              const x = galaxyCenterX + Math.cos(angle + swirl * 0.3) * distance
-              const y = galaxyCenterY + Math.sin(angle + swirl * 0.3) * distance
+              const x = galCenterX + Math.cos(angle + swirl * 0.3) * distance
+              const y = galCenterY + Math.sin(angle + swirl * 0.3) * distance
               
               const size = 2 + normalizedData[i] * 4
               const opacity = 0.3 + normalizedData[i] * 0.7
@@ -1880,19 +2297,19 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
             break
             
           case 'particle':
-            // Particle cloud
+            // Particle cloud - use waveformCenterX/Y for position
             if (normalizedData.length === 0) break
             
-            const particleCenterX = canvas.width / 2
-            const particleCenterY = canvas.height / 2
+            const partCenterX = waveformCenterX
+            const partCenterY = waveformCenterY
             const particleSpread = Math.min(waveformWidth, waveformHeight) * 0.4
             
             for (let i = 0; i < normalizedData.length; i++) {
               const angle = (i / normalizedData.length) * Math.PI * 2
               const distance = (Math.random() * 0.5 + 0.5) * particleSpread * normalizedData[i]
               
-              const x = particleCenterX + Math.cos(angle) * distance
-              const y = particleCenterY + Math.sin(angle) * distance
+              const x = partCenterX + Math.cos(angle) * distance
+              const y = partCenterY + Math.sin(angle) * distance
               
               const size = 1 + normalizedData[i] * 5
               const opacity = 0.4 + normalizedData[i] * 0.6
@@ -1905,9 +2322,9 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
             break
             
           case 'ripple':
-            // Water ripple effect
-            const rippleCenterX = canvas.width / 2
-            const rippleCenterY = canvas.height / 2
+            // Water ripple effect - use waveformCenterX/Y for position
+            const ripCenterX = waveformCenterX
+            const ripCenterY = waveformCenterY
             const maxRippleRadius = Math.min(waveformWidth, waveformHeight) * 0.45
             const numRipples = 8
             
@@ -1925,8 +2342,8 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
                 const amplitude = normalizedData[dataIndex] * 30 * (1 - rippleProgress)
                 const radius = baseRadius + amplitude
                 
-                const x = rippleCenterX + Math.cos(angle) * radius
-                const y = rippleCenterY + Math.sin(angle) * radius
+                const x = ripCenterX + Math.cos(angle) * radius
+                const y = ripCenterY + Math.sin(angle) * radius
                 
                 if (i === 0) {
                   ctx.moveTo(x, y)
@@ -2808,6 +3225,263 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
             ctx.fill()
             break
             
+          case 'image-mask':
+            // Solid waveform shape that clips/masks an image behind it
+            // This creates a filled waveform silhouette
+            if (normalizedData.length < 2) break
+            
+            const maskCenterY = waveformY + waveformHeight / 2
+            const maskCenterX = waveformX + waveformWidth / 2
+            
+            // Check if there's a mask image to use
+            if (imageMaskImage) {
+              // Create a temporary canvas for the mask
+              const maskCanvas = document.createElement('canvas')
+              maskCanvas.width = canvas.width
+              maskCanvas.height = canvas.height
+              const maskCtx = maskCanvas.getContext('2d')
+              
+              if (maskCtx) {
+                // Draw the waveform shape as a mask based on selected shape
+                
+                if (imageMaskShape === 'circular') {
+                  // Circular mask with radial bars extending from center
+                  // Use circleRadiusSetting for inner radius control (same as regular circular style)
+                  const circularMaskRadius = Math.min(waveformWidth, waveformHeight) / 2
+                  const baseRadius = circularMaskRadius * (circleRadiusSetting / 200) // 20-200 maps to 0.1-1.0
+                  const maxBarLength = (circularMaskRadius - baseRadius) * (waveformHeightMultiplier / 100) // Apply height multiplier
+                  
+                  // First, fill the center circle
+                  maskCtx.beginPath()
+                  maskCtx.arc(maskCenterX, maskCenterY, baseRadius, 0, Math.PI * 2)
+                  maskCtx.fill()
+                  
+                  // Calculate number of bars and spacing to match the waveform exactly
+                  // Use the actual normalized data length and barGap to control spacing
+                  const totalBars = normalizedData.length
+                  const skipFactor = Math.max(1, Math.ceil(barGap / 2)) // barGap controls how many samples to skip
+                  const numBars = Math.floor(totalBars / skipFactor)
+                  
+                  // Bar angular width based on barWidth setting
+                  const circumference = 2 * Math.PI * baseRadius
+                  const angularBarWidth = (barWidth * 3 / circumference) * Math.PI * 2 // Scale barWidth for circular
+                  const angularGap = (barGap / circumference) * Math.PI * 2 // Gap between bars
+                  
+                  // Draw each radial bar - matching the exact waveform data
+                  for (let i = 0; i < numBars; i++) {
+                    const dataIndex = Math.min(i * skipFactor, normalizedData.length - 1)
+                    const angle = (i / numBars) * Math.PI * 2 - Math.PI / 2
+                    const barLength = normalizedData[dataIndex] * maxBarLength
+                    const innerR = baseRadius
+                    const outerR = baseRadius + barLength
+                    
+                    // Draw a trapezoid shape for the bar
+                    const halfAngle = Math.max(angularBarWidth / 2, 0.01) // Minimum angle
+                    
+                    maskCtx.beginPath()
+                    // Inner arc (at base radius)
+                    maskCtx.arc(maskCenterX, maskCenterY, innerR, angle - halfAngle, angle + halfAngle)
+                    // Outer arc (at bar end)
+                    maskCtx.arc(maskCenterX, maskCenterY, outerR, angle + halfAngle, angle - halfAngle, true)
+                    maskCtx.closePath()
+                    maskCtx.fill()
+                  }
+                } else {
+                  // Normal (linear) mask - horizontal waveform
+                  maskCtx.beginPath()
+                  
+                  // Top edge of the waveform
+                  for (let i = 0; i < normalizedData.length; i++) {
+                    const x = waveformX + (i / normalizedData.length) * waveformWidth
+                    const amplitude = normalizedData[i] * (waveformHeight / 2)
+                    const y = maskCenterY - amplitude
+                    
+                    if (i === 0) {
+                      maskCtx.moveTo(x, y)
+                    } else {
+                      // Smooth curve between points
+                      const prevX = waveformX + ((i - 1) / normalizedData.length) * waveformWidth
+                      const prevAmplitude = normalizedData[i - 1] * (waveformHeight / 2)
+                      const prevY = maskCenterY - prevAmplitude
+                      const cpX = (prevX + x) / 2
+                      const cpY = (prevY + y) / 2
+                      maskCtx.quadraticCurveTo(prevX, prevY, cpX, cpY)
+                    }
+                  }
+                  
+                  // Continue along the right edge
+                  const lastTopX = waveformX + waveformWidth
+                  const lastTopY = maskCenterY - normalizedData[normalizedData.length - 1] * (waveformHeight / 2)
+                  maskCtx.lineTo(lastTopX, lastTopY)
+                  
+                  // Bottom edge of the waveform (reverse direction)
+                  for (let i = normalizedData.length - 1; i >= 0; i--) {
+                    const x = waveformX + (i / normalizedData.length) * waveformWidth
+                    const amplitude = normalizedData[i] * (waveformHeight / 2)
+                    const y = maskCenterY + amplitude
+                    
+                    if (i === normalizedData.length - 1) {
+                      maskCtx.lineTo(x, y)
+                    } else {
+                      // Smooth curve between points
+                      const nextX = waveformX + ((i + 1) / normalizedData.length) * waveformWidth
+                      const nextAmplitude = normalizedData[i + 1] * (waveformHeight / 2)
+                      const nextY = maskCenterY + nextAmplitude
+                      const cpX = (nextX + x) / 2
+                      const cpY = (nextY + y) / 2
+                      maskCtx.quadraticCurveTo(nextX, nextY, cpX, cpY)
+                    }
+                  }
+                  maskCtx.closePath()
+                }
+                
+                // Fill with the image using destination-in compositing
+                maskCtx.fillStyle = '#000'
+                maskCtx.fill()
+                
+                // Use cached mask image instead of loading every time
+                const cachedMask = cachedMaskImageRef.current
+                if (cachedMask && cachedMask.url === imageMaskImage) {
+                  // Use destination-in to clip image to the waveform shape
+                  maskCtx.globalCompositeOperation = 'source-in'
+                  
+                  // Calculate image dimensions to cover the waveform area
+                  const imgAspect = cachedMask.image.width / cachedMask.image.height
+                  const waveformAspect = waveformWidth / waveformHeight
+                  
+                  let drawWidth, drawHeight, drawX, drawY
+                  
+                  if (imgAspect > waveformAspect) {
+                    // Image is wider - fit by height
+                    drawHeight = waveformHeight * 1.2
+                    drawWidth = drawHeight * imgAspect
+                  } else {
+                    // Image is taller - fit by width
+                    drawWidth = waveformWidth * 1.2
+                    drawHeight = drawWidth / imgAspect
+                  }
+                  
+                  // Calculate position based on focal point or center
+                  if (imageMaskFocalPoint) {
+                    // Focal point is in percentage (0-100), convert to actual pixel position
+                    const focalX = (imageMaskFocalPoint.x / 100) * drawWidth
+                    const focalY = (imageMaskFocalPoint.y / 100) * drawHeight
+                    
+                    // Position image so focal point is at center of waveform
+                    const waveformCenterX = waveformX + waveformWidth / 2
+                    const waveformCenterY = waveformY + waveformHeight / 2
+                    
+                    drawX = waveformCenterX - focalX
+                    drawY = waveformCenterY - focalY
+                  } else {
+                    // Default: center the image
+                    if (imgAspect > waveformAspect) {
+                      drawX = waveformX + (waveformWidth - drawWidth) / 2
+                      drawY = waveformY - (drawHeight - waveformHeight) / 2
+                    } else {
+                      drawX = waveformX - (drawWidth - waveformWidth) / 2
+                      drawY = waveformY + (waveformHeight - drawHeight) / 2
+                    }
+                  }
+                  
+                  maskCtx.drawImage(cachedMask.image, drawX, drawY, drawWidth, drawHeight)
+                  
+                  // Draw the masked result onto the main canvas
+                  ctx.drawImage(maskCanvas, 0, 0)
+                }
+              }
+            } else {
+              // No mask image - use gradient fill instead
+              // Create a beautiful gradient fill when no image
+              const noImageMaskGradient = ctx.createLinearGradient(waveformX, waveformY, waveformX + waveformWidth, waveformY + waveformHeight)
+              noImageMaskGradient.addColorStop(0, '#3b82f6')
+              noImageMaskGradient.addColorStop(0.5, '#8b5cf6')
+              noImageMaskGradient.addColorStop(1, '#ec4899')
+              
+              const fillStyle = waveformUseGradient && waveformGradientStops.length >= 2 ? waveformFillStyle : noImageMaskGradient
+              
+              if (imageMaskShape === 'circular') {
+                // Circular shape with radial bars - using same controls as mask version
+                const circularMaskRadius = Math.min(waveformWidth, waveformHeight) / 2
+                const baseRadius = circularMaskRadius * (circleRadiusSetting / 200)
+                const maxBarLength = (circularMaskRadius - baseRadius) * (waveformHeightMultiplier / 100)
+                
+                // Calculate number of bars and spacing
+                const totalBars = normalizedData.length
+                const skipFactor = Math.max(1, Math.ceil(barGap / 2))
+                const numBars = Math.floor(totalBars / skipFactor)
+                
+                const circumference = 2 * Math.PI * baseRadius
+                const angularBarWidth = (barWidth * 3 / circumference) * Math.PI * 2
+                
+                ctx.fillStyle = fillStyle
+                
+                // First, fill the center circle
+                ctx.beginPath()
+                ctx.arc(maskCenterX, maskCenterY, baseRadius, 0, Math.PI * 2)
+                ctx.fill()
+                
+                // Then draw each radial bar
+                for (let i = 0; i < numBars; i++) {
+                  const dataIndex = Math.min(i * skipFactor, normalizedData.length - 1)
+                  const angle = (i / numBars) * Math.PI * 2 - Math.PI / 2
+                  const barLength = normalizedData[dataIndex] * maxBarLength
+                  const innerR = baseRadius
+                  const outerR = baseRadius + barLength
+                  const halfAngle = Math.max(angularBarWidth / 2, 0.01)
+                  
+                  ctx.beginPath()
+                  ctx.arc(maskCenterX, maskCenterY, innerR, angle - halfAngle, angle + halfAngle)
+                  ctx.arc(maskCenterX, maskCenterY, outerR, angle + halfAngle, angle - halfAngle, true)
+                  ctx.closePath()
+                  ctx.fill()
+                }
+              } else {
+                // Normal (linear) shape with gradient
+                ctx.beginPath()
+                
+                // Top edge
+                for (let i = 0; i < normalizedData.length; i++) {
+                  const x = waveformX + (i / normalizedData.length) * waveformWidth
+                  const amplitude = normalizedData[i] * (waveformHeight / 2)
+                  const y = maskCenterY - amplitude
+                  
+                  if (i === 0) {
+                    ctx.moveTo(x, y)
+                  } else {
+                    const prevX = waveformX + ((i - 1) / normalizedData.length) * waveformWidth
+                    const prevAmplitude = normalizedData[i - 1] * (waveformHeight / 2)
+                    const prevY = maskCenterY - prevAmplitude
+                    const cpX = (prevX + x) / 2
+                    const cpY = (prevY + y) / 2
+                    ctx.quadraticCurveTo(prevX, prevY, cpX, cpY)
+                  }
+                }
+                
+                // Bottom edge (reverse)
+                for (let i = normalizedData.length - 1; i >= 0; i--) {
+                  const x = waveformX + (i / normalizedData.length) * waveformWidth
+                  const amplitude = normalizedData[i] * (waveformHeight / 2)
+                  const y = maskCenterY + amplitude
+                  
+                  if (i === normalizedData.length - 1) {
+                    ctx.lineTo(x, y)
+                  } else {
+                    const nextX = waveformX + ((i + 1) / normalizedData.length) * waveformWidth
+                    const nextAmplitude = normalizedData[i + 1] * (waveformHeight / 2)
+                    const nextY = maskCenterY + nextAmplitude
+                    const cpX = (nextX + x) / 2
+                    const cpY = (nextY + y) / 2
+                    ctx.quadraticCurveTo(nextX, nextY, cpX, cpY)
+                  }
+                }
+                ctx.closePath()
+                ctx.fillStyle = fillStyle
+                ctx.fill()
+              }
+            }
+            break
+            
           default:
             // Fallback to bars
             for (let i = 0; i < normalizedData.length; i++) {
@@ -2832,8 +3506,8 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
           return
         }
         
-        // Render text overlay after caching waveform
-        if (showText && customText) {
+        // Render text overlay after caching waveform (skip if hideOverlays is true)
+        if (!hideOverlays && showText && customText) {
           // Wait for font to be ready before rendering
           const fontSpec = `${fontSize}px "${fontFamily}"`
           if (document.fonts && fontFamily !== 'Arial' && fontFamily !== 'sans-serif') {
@@ -2875,11 +3549,57 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
           ctx.fillText(customText, textXPos, textYPos)
         }
         
-        // Add QR code overlay if enabled
-        if (showQRCode && qrCodeUrl) {
+        // Render multiple text elements (skip if hideOverlays is true)
+        if (!hideOverlays) {
+        for (const element of textElements) {
+          if (!element.visible || !element.text) continue
+          
+          // Load font if needed
+          const elemFontSpec = `${element.fontSize}px "${element.fontFamily}"`
+          if (document.fonts && element.fontFamily !== 'Arial' && element.fontFamily !== 'sans-serif') {
+            await document.fonts.load(elemFontSpec).catch(() => {
+              console.warn('Font load failed for text element:', element.fontFamily)
+            })
+          }
+          
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.font = `${element.fontSize}px "${element.fontFamily}", sans-serif`
+          
+          const elemXPos = (element.x / 100) * canvas.width
+          const elemYPos = (element.y / 100) * canvas.height
+          
+          // Apply gradient or solid color
+          if (element.useGradient && element.gradientStops.length >= 2) {
+            let elemGradient
+            if (element.gradientDirection === 'radial') {
+              elemGradient = ctx.createRadialGradient(elemXPos, elemYPos, 0, elemXPos, elemYPos, element.fontSize * 2)
+            } else if (element.gradientDirection === 'horizontal') {
+              elemGradient = ctx.createLinearGradient(elemXPos - element.fontSize * 2, elemYPos, elemXPos + element.fontSize * 2, elemYPos)
+            } else if (element.gradientDirection === 'vertical') {
+              elemGradient = ctx.createLinearGradient(elemXPos, elemYPos - element.fontSize, elemXPos, elemYPos + element.fontSize)
+            } else { // diagonal
+              elemGradient = ctx.createLinearGradient(elemXPos - element.fontSize, elemYPos - element.fontSize, elemXPos + element.fontSize, elemYPos + element.fontSize)
+            }
+            const sortedStops = [...element.gradientStops].sort((a, b) => a.position - b.position)
+            sortedStops.forEach(stop => {
+              elemGradient.addColorStop(stop.position, stop.color)
+            })
+            ctx.fillStyle = elemGradient
+          } else {
+            ctx.fillStyle = element.color
+          }
+          
+          ctx.fillText(element.text, elemXPos, elemYPos)
+        }
+        } // End of hideOverlays check for text elements
+        
+        // Add QR code overlay if enabled (skip if hideOverlays is true)
+        if (!hideOverlays && showQRCode && qrCodeUrl) {
           // Use new percentage-based size and position
           const qrSize = Math.floor(canvas.width * (qrCodeSize / 100))
           try {
+            const QRCode = await getQRCode()
             const qrDataUrl = await QRCode.toDataURL(qrCodeUrl, { 
               width: qrSize, 
               margin: 1,
@@ -2916,6 +3636,15 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
           }
         }
         
+        // DOUBLE BUFFERING: Copy offscreen canvas to visible canvas
+        // This happens only after rendering is complete, preventing flicker
+        if (!isCancelled) {
+          visibleCanvas.width = canvas.width
+          visibleCanvas.height = canvas.height
+          visibleCtx.drawImage(canvas, 0, 0)
+          console.log('✅ Copied offscreen canvas to visible canvas')
+        }
+        
         setIsGenerating(false)
       })
       .catch(error => {
@@ -2949,6 +3678,8 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     waveformStyle, 
     waveformSize,
     waveformHeightMultiplier,
+    waveformXPos,
+    waveformYPos,
     showText, 
     songTitle, 
     artistName, 
@@ -2973,9 +3704,16 @@ export const ProductMockup = forwardRef<ProductMockupRef, ProductMockupProps>(
     artisticTextStyle,
     artisticTextColor,
     artisticTextOpacity,
+    textElements, // Multiple text elements
     fontLoaded, // Re-render when font finishes loading
     canvasWidth, // Re-render when canvas dimensions change
-    canvasHeight
+    canvasHeight,
+    barWidthSetting, // Re-render when bar width changes
+    barGapSetting, // Re-render when bar gap changes
+    circleRadiusSetting, // Re-render when circle radius changes
+    imageMaskImage, // Re-render when mask image changes
+    imageMaskShape, // Re-render when mask shape changes
+    imageMaskFocalPoint // Re-render when mask focal point changes
   ])
 
   const getProductIcon = () => {

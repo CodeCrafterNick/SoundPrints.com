@@ -35,6 +35,8 @@ export function LiveWaveformPreview({ mockupRef, selectedSize }: LiveWaveformPre
   const textY = useCustomizerStore((state) => state.textY)
   const fontSize = useCustomizerStore((state) => state.fontSize)
   const fontFamily = useCustomizerStore((state) => state.fontFamily)
+  const barWidth = useCustomizerStore((state) => state.barWidth)
+  const barGap = useCustomizerStore((state) => state.barGap)
 
   useEffect(() => {
     let logCount = 0
@@ -115,7 +117,7 @@ export function LiveWaveformPreview({ mockupRef, selectedSize }: LiveWaveformPre
         cancelAnimationFrame(animationFrameRef.current)
       }
     }
-  }, [mockupRef, audioUrl, selectedRegion, waveformColor, waveformUseGradient, waveformGradientStops, waveformGradientDirection, backgroundColor, backgroundUseGradient, backgroundGradientStops, backgroundGradientDirection, backgroundImage, backgroundImagePosition, waveformStyle, waveformSize, waveformHeightMultiplier, showText, customText, textColor, textX, textY, fontSize, fontFamily, selectedSize])
+  }, [mockupRef, audioUrl, selectedRegion, waveformColor, waveformUseGradient, waveformGradientStops, waveformGradientDirection, backgroundColor, backgroundUseGradient, backgroundGradientStops, backgroundGradientDirection, backgroundImage, backgroundImagePosition, waveformStyle, waveformSize, waveformHeightMultiplier, showText, customText, textColor, textX, textY, fontSize, fontFamily, selectedSize, barWidth, barGap])
 
   return (
     <div className="w-full h-full overflow-hidden flex items-center justify-center">
