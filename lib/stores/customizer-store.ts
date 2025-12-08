@@ -17,12 +17,55 @@ const debounce = <T extends (...args: Parameters<T>) => void>(
 }
 
 export type ProductType = 'poster' | 'canvas' | 'framed-poster' | 't-shirt' | 'mug' | 'hoodie' | 'digital-download'
-export type WaveformStyle = 'bars' | 'smooth' | 'soundwave-lines' | 'mountain' | 'heartbeat' | 'constellation' | 'ribbon' | 'spectrum' | 'mirror' | 'circular' | 'dots' | 'galaxy' | 'frequency' | 'particle' | 'ripple' | 'soundwave' | 'wave3d' | 'neon' | 'gradient-bars' | 'vinyl' | 'equalizer' | 'pulse' | 'geometric' | 'dna' | 'moire' | 'fluid' | 'kaleidoscope' | 'glitch' | 'perlin' | 'crystals' | 'tunnel' | 'bloom' | 'aurora' | 'fire' | 'wave' | 'glow' | 'image-mask'
+export type WaveformStyle = 'bars' | 'smooth' | 'soundwave-lines' | 'mountain' | 'heartbeat' | 'constellation' | 'ribbon' | 'spectrum' | 'mirror' | 'circular' | 'dots' | 'galaxy' | 'frequency' | 'particle' | 'ripple' | 'soundwave' | 'wave3d' | 'neon' | 'gradient-bars' | 'vinyl' | 'equalizer' | 'pulse' | 'geometric' | 'dna' | 'moire' | 'fluid' | 'kaleidoscope' | 'glitch' | 'perlin' | 'crystals' | 'tunnel' | 'bloom' | 'aurora' | 'fire' | 'wave' | 'glow' | 'image-mask' | 'squiggly' | 'soundcloud' | 'blocks' | 'spectrogram' | 'circular-blocks' | 'circuit' | 'matrix' | 'laser' | 'isometric' | 'vinyl-grooves' | 'watercolor' | 'sketch' | 'tessellation' | 'particle-cloud' | 'heart-shape' | 'starburst' | 'text-wave'
 export type ArtisticTextStyle = 'none' | 'wordcloud' | 'spiral' | 'wave' | 'circular' | 'scattered'
 
 export interface GradientStop {
   color: string
   position: number // 0 to 1
+}
+
+// Computed waveform data - cached from preview for exact print matching
+// This ensures the print file uses the exact same pre-computed data as the preview
+export interface ComputedWaveformData {
+  // Pre-computed normalized amplitude values (0-1 range)
+  normalizedAmplitudes: number[]
+  // Reference dimensions from preview canvas
+  referenceWidth: number
+  referenceHeight: number
+  // Waveform dimensions used during computation
+  waveformWidth: number
+  waveformHeight: number
+  // Bar settings used during computation
+  barWidth: number
+  barGap: number
+  barCount: number
+  // Timestamp for cache invalidation
+  computedAt: number
+}
+
+// Border text wrap configuration
+export type BorderTextSide = 'top' | 'right' | 'bottom' | 'left'
+export type BorderTextJustify = 'start' | 'center' | 'end' | 'space-between' | 'space-around' | 'space-evenly'
+
+export interface BorderTextConfig {
+  enabled: boolean
+  text: string
+  sides: BorderTextSide[] // Which sides to wrap text on
+  justify: BorderTextJustify // How to distribute text/spacing
+  continuous: boolean // Whether to wrap text continuously around all sides
+  breakWords: boolean // Whether to break words with hyphens or end at word boundaries
+  fontSize: number // Font size in pixels
+  fontFamily: string
+  color: string
+  useGradient: boolean
+  gradientStops: GradientStop[]
+  gradientDirection: 'horizontal' | 'vertical' | 'diagonal' | 'radial'
+  height: number // Height/width of the text band (percentage of canvas, 2-15%)
+  margin: number // Margin from canvas edge (percentage, 0-10%)
+  letterSpacing: number // Letter spacing (0-20)
+  repeat: boolean // Whether to repeat text if it doesn't fill the side
+  uppercase: boolean // Whether to transform text to uppercase
 }
 
 // Text element for multiple text support
@@ -69,7 +112,10 @@ interface CustomizerState {
   barWidth: number // 1-30, thickness of waveform bars
   barGap: number // 0-20, space between bars
   barRounded: boolean // Whether bars have rounded corners
+  optimizedBars: boolean // Whether to sample bars for better visual (true) or exact Printify match (false)
   circleRadius: number // 20-200, inner radius for circular waveforms
+  circleGapAngle: number // 0-180, angle in degrees for gap at bottom of circular waveform
+  circleInnerBars: boolean // Whether circular waveform bars extend inward as well as outward
   mirrorUseTwoColors: boolean // Whether mirror style uses different colors for top/bottom
   mirrorSecondaryColor: string // Secondary color for mirror bottom half
   imageMaskImage: string | null // Image to clip behind the waveform mask
@@ -84,10 +130,14 @@ interface CustomizerState {
   qrCodeSize: number // 5-20 percentage of canvas width
   qrCodeX: number // 0-100 percentage from left
   qrCodeY: number // 0-100 percentage from top
+  qrCodeUseCustomColor: boolean // Whether to use custom color instead of waveform color
+  qrCodeColor: string // Custom QR code color
+  qrCodeStyle: 'square' | 'rounded' | 'dots' | 'classy' | 'classy-rounded' | 'extra-rounded' | 'diamond' | 'star' | 'heart' | 'fluid' // QR code artistic style
   
   // Product selection
   selectedProduct: ProductType
   selectedSize: string
+  selectedFrameColor: 'black' | 'white' | 'walnut'
   
   // Text customization (legacy single text - kept for backward compatibility)
   customText: string
@@ -111,6 +161,9 @@ interface CustomizerState {
   selectedTextElementIds: string[] // Multi-select support
   clipboardTextElements: TextElement[] // Clipboard for copy/paste
   
+  // Border text wrap
+  borderText: BorderTextConfig
+  
   // Speech detection and artistic text
   detectedWords: string[]
   showArtisticText: boolean
@@ -132,6 +185,16 @@ interface CustomizerState {
   // Preview generation
   hasUnsavedChanges: boolean
   setHasUnsavedChanges: (hasChanges: boolean) => void
+  
+  // Computed waveform data - cached from preview for exact print matching
+  computedWaveformData: ComputedWaveformData | null
+  setComputedWaveformData: (data: ComputedWaveformData | null) => void
+  
+  // Animation preview state
+  isAnimationPlaying: boolean
+  animationProgress: number // 0-1 normalized playback position
+  setIsAnimationPlaying: (playing: boolean) => void
+  setAnimationProgress: (progress: number) => void
   
   // Actions
   setAudioFile: (file: File | null) => void
@@ -158,7 +221,10 @@ interface CustomizerState {
   setBarWidth: (width: number) => void
   setBarGap: (gap: number) => void
   setBarRounded: (rounded: boolean) => void
+  setOptimizedBars: (optimized: boolean) => void
   setCircleRadius: (radius: number) => void
+  setCircleGapAngle: (angle: number) => void
+  setCircleInnerBars: (inner: boolean) => void
   setMirrorUseTwoColors: (use: boolean) => void
   setMirrorSecondaryColor: (color: string) => void
   setImageMaskImage: (image: string | null) => void
@@ -171,8 +237,12 @@ interface CustomizerState {
   setQRCodeSize: (size: number) => void
   setQRCodeX: (x: number) => void
   setQRCodeY: (y: number) => void
+  setQRCodeUseCustomColor: (use: boolean) => void
+  setQRCodeColor: (color: string) => void
+  setQRCodeStyle: (style: 'square' | 'rounded' | 'dots' | 'classy' | 'classy-rounded' | 'extra-rounded' | 'diamond' | 'star' | 'heart' | 'fluid') => void
   setSelectedProduct: (product: ProductType) => void
   setSelectedSize: (size: string) => void
+  setSelectedFrameColor: (color: 'black' | 'white' | 'walnut') => void
   setCustomText: (text: string) => void
   setSongTitle: (title: string) => void
   setArtistName: (name: string) => void
@@ -205,6 +275,13 @@ interface CustomizerState {
   copySelectedTextElements: () => void
   pasteTextElements: () => void
   deleteSelectedTextElements: () => void
+  
+  // Border text actions
+  setBorderText: (config: Partial<BorderTextConfig>) => void
+  setBorderTextEnabled: (enabled: boolean) => void
+  setBorderTextSides: (sides: BorderTextSide[]) => void
+  setBorderTextJustify: (justify: BorderTextJustify) => void
+  setBorderTextHeight: (height: number) => void
   
   // Undo/Redo actions
   undo: () => void
@@ -242,14 +319,17 @@ const initialState = {
   backgroundImagePosition: 'center' as const,
   backgroundFocalPoint: null,
   waveformStyle: 'bars' as WaveformStyle,
-  waveformSize: 133, // 133% to fill most of the canvas by default
+  waveformSize: 160, // 160% to fill edge-to-edge with buffer by default
   waveformHeightMultiplier: 100, // 100% = default height
   waveformX: 50, // Center horizontally
   waveformY: 50, // Center vertically
   barWidth: 8, // Default bar thickness
   barGap: 5, // Default spacing between bars
   barRounded: false, // Default to square bars
+  optimizedBars: true, // Default to optimized visual (fewer bars that look better)
   circleRadius: 80, // Default inner radius for circular waveforms
+  circleGapAngle: 0, // Default to no gap (full circle)
+  circleInnerBars: false, // Default to outward-only bars
   mirrorUseTwoColors: false, // Default to single color
   mirrorSecondaryColor: '#888888', // Default secondary color for mirror bottom
   imageMaskImage: null, // Image to clip behind the waveform mask
@@ -258,6 +338,7 @@ const initialState = {
   canvasAspectRatio: '3:2', // Default aspect ratio
   selectedProduct: 'poster' as ProductType,
   selectedSize: 'M',
+  selectedFrameColor: 'black' as const,
   customText: '',
   songTitle: '',
   artistName: '',
@@ -279,30 +360,77 @@ const initialState = {
   selectedTextElementId: null as string | null,
   selectedTextElementIds: [] as string[],
   clipboardTextElements: [] as TextElement[],
+  // Border text wrap configuration
+  borderText: {
+    enabled: false,
+    text: '',
+    sides: ['top', 'bottom'] as BorderTextSide[],
+    justify: 'space-evenly' as BorderTextJustify,
+    continuous: false, // When true, text wraps continuously around all selected sides
+    breakWords: true, // When true, break words with hyphens; when false, end at word boundaries
+    fontSize: 14,
+    fontFamily: 'Inter',
+    color: '#000000',
+    useGradient: false,
+    gradientStops: [
+      { color: '#000000', position: 0 },
+      { color: '#FFFFFF', position: 1 },
+    ],
+    gradientDirection: 'horizontal' as const,
+    height: 5, // 5% of canvas height/width
+    margin: 2, // 2% margin from edge
+    letterSpacing: 2,
+    repeat: true,
+    uppercase: true,
+  } as BorderTextConfig,
   showQRCode: false,
   qrCodeUrl: '',
   qrCodePosition: 'bottom-right' as const,
   qrCodeSize: 8, // 8% of canvas width
   qrCodeX: 92, // 92% from left (bottom-right default)
   qrCodeY: 92, // 92% from top (bottom-right default)
+  qrCodeUseCustomColor: false,
+  qrCodeColor: '#000000',
+  qrCodeStyle: 'square' as const,
   detectedWords: [],
   showArtisticText: false,
   artisticTextStyle: 'wordcloud' as ArtisticTextStyle,
   artisticTextColor: '#000000',
   artisticTextOpacity: 0.7,
   hasUnsavedChanges: false,
+  computedWaveformData: null as ComputedWaveformData | null,
+  // Animation preview state
+  isAnimationPlaying: false,
+  animationProgress: 0,
 }
 
 // Keys to track for undo/redo (excludes audio/file data and internal state)
 const historyKeys = [
+  // Waveform appearance
   'waveformColor', 'waveformUseGradient', 'waveformGradientStops', 'waveformGradientDirection',
+  'waveformStyle', 'waveformSize', 'waveformHeightMultiplier', 'waveformX', 'waveformY',
+  'barWidth', 'barGap', 'barRounded', 'circleRadius', 'circleGapAngle', 'circleInnerBars',
+  'mirrorUseTwoColors', 'mirrorSecondaryColor',
+  // Background
   'backgroundColor', 'backgroundUseGradient', 'backgroundGradientStops', 'backgroundGradientDirection',
   'backgroundImage', 'backgroundImagePosition', 'backgroundFocalPoint',
-  'waveformStyle', 'waveformSize', 'waveformHeightMultiplier', 'barWidth', 'barGap', 'barRounded', 'circleRadius', 'canvasAspectRatio',
+  // Canvas
+  'canvasAspectRatio',
+  // Image mask
   'imageMaskImage', 'imageMaskShape', 'imageMaskFocalPoint',
+  // Text (legacy)
   'showText', 'customText', 'textColor', 'textUseGradient', 'textGradientStops', 'textGradientDirection',
   'textPosition', 'textX', 'textY', 'fontSize', 'fontFamily',
+  'songTitle', 'artistName', 'customDate',
+  // Text elements (multiple)
+  'textElements',
+  // Border text
+  'borderText',
+  // QR Code
   'showQRCode', 'qrCodeUrl', 'qrCodePosition', 'qrCodeSize', 'qrCodeX', 'qrCodeY',
+  'qrCodeUseCustomColor', 'qrCodeColor', 'qrCodeStyle',
+  // Artistic text
+  'showArtisticText', 'artisticTextStyle', 'artisticTextColor', 'artisticTextOpacity',
 ] as const
 
 // Extract history-relevant state
@@ -313,6 +441,23 @@ const getHistoryState = (state: CustomizerState): Partial<CustomizerState> => {
   }
   return result
 }
+
+// Check if two history states are meaningfully different
+const areHistoryStatesDifferent = (a: Partial<CustomizerState>, b: Partial<CustomizerState>): boolean => {
+  for (const key of historyKeys) {
+    const aVal = (a as any)[key]
+    const bVal = (b as any)[key]
+    // Deep compare for objects/arrays
+    if (JSON.stringify(aVal) !== JSON.stringify(bVal)) {
+      return true
+    }
+  }
+  return false
+}
+
+// Debounced history save timer
+let historySaveTimer: ReturnType<typeof setTimeout> | null = null
+const HISTORY_SAVE_DELAY = 500 // Save history 500ms after last change
 
 export const useCustomizerStore = create<CustomizerState>()(
   persist(
@@ -354,17 +499,27 @@ export const useCustomizerStore = create<CustomizerState>()(
         set({ waveformSize: clamped, hasUnsavedChanges: true })
       },
       setWaveformHeightMultiplier: (multiplier) => set({ waveformHeightMultiplier: multiplier, hasUnsavedChanges: true }),
-      setWaveformX: (x) => set({ waveformX: Math.max(0, Math.min(100, x)), hasUnsavedChanges: true }),
-      setWaveformY: (y) => set({ waveformY: Math.max(0, Math.min(100, y)), hasUnsavedChanges: true }),
-      setWaveformPosition: (x, y) => set({ 
-        waveformX: Math.max(0, Math.min(100, x)), 
-        waveformY: Math.max(0, Math.min(100, y)), 
-        hasUnsavedChanges: true 
-      }),
+      setWaveformX: (x) => set({ waveformX: x, hasUnsavedChanges: true }),
+      setWaveformY: (y) => set({ waveformY: y, hasUnsavedChanges: true }),
+      setWaveformPosition: (x, y) => {
+        set({ 
+          waveformX: x, 
+          waveformY: y, 
+          hasUnsavedChanges: true 
+        })
+        // Debounced history save for position changes (allows smooth dragging)
+        if (historySaveTimer) clearTimeout(historySaveTimer)
+        historySaveTimer = setTimeout(() => {
+          get().saveToHistory()
+        }, HISTORY_SAVE_DELAY)
+      },
       setBarWidth: (width) => set({ barWidth: Math.max(1, Math.min(30, width)), hasUnsavedChanges: true }),
       setBarGap: (gap) => set({ barGap: Math.max(0, Math.min(20, gap)), hasUnsavedChanges: true }),
       setBarRounded: (rounded) => set({ barRounded: rounded, hasUnsavedChanges: true }),
+      setOptimizedBars: (optimized) => set({ optimizedBars: optimized, hasUnsavedChanges: true }),
       setCircleRadius: (radius) => set({ circleRadius: Math.max(20, Math.min(200, radius)), hasUnsavedChanges: true }),
+      setCircleGapAngle: (angle) => set({ circleGapAngle: Math.max(0, Math.min(180, angle)), hasUnsavedChanges: true }),
+      setCircleInnerBars: (inner) => set({ circleInnerBars: inner, hasUnsavedChanges: true }),
       setMirrorUseTwoColors: (use) => set({ mirrorUseTwoColors: use, hasUnsavedChanges: true }),
       setMirrorSecondaryColor: (color) => set({ mirrorSecondaryColor: color, hasUnsavedChanges: true }),
       setImageMaskImage: (image) => set({ imageMaskImage: image, hasUnsavedChanges: true }),
@@ -373,6 +528,7 @@ export const useCustomizerStore = create<CustomizerState>()(
       setCanvasAspectRatio: (ratio) => set({ canvasAspectRatio: ratio, hasUnsavedChanges: true }),
       setSelectedProduct: (product) => set({ selectedProduct: product }),
       setSelectedSize: (size) => set({ selectedSize: size }),
+      setSelectedFrameColor: (color) => set({ selectedFrameColor: color }),
       setCustomText: (text) => set({ customText: text, hasUnsavedChanges: true }),
       setSongTitle: (title) => set({ songTitle: title, hasUnsavedChanges: true }),
       setArtistName: (name) => set({ artistName: name, hasUnsavedChanges: true }),
@@ -398,12 +554,13 @@ export const useCustomizerStore = create<CustomizerState>()(
       setShowQRCode: (show) => set({ showQRCode: show, hasUnsavedChanges: true }),
       setQRCodeUrl: (url) => set({ qrCodeUrl: url, hasUnsavedChanges: true }),
       setQRCodePosition: (position) => {
-        // Also update X/Y when preset position changes
+        // Also update X/Y when preset position changes - using equal 5% margin from edges
+        const margin = 5
         const positions = {
-          'top-left': { x: 8, y: 8 },
-          'top-right': { x: 92, y: 8 },
-          'bottom-left': { x: 8, y: 92 },
-          'bottom-right': { x: 92, y: 92 },
+          'top-left': { x: margin, y: margin },
+          'top-right': { x: 100 - margin, y: margin },
+          'bottom-left': { x: margin, y: 100 - margin },
+          'bottom-right': { x: 100 - margin, y: 100 - margin },
         }
         const pos = positions[position]
         set({ qrCodePosition: position, qrCodeX: pos.x, qrCodeY: pos.y, hasUnsavedChanges: true })
@@ -411,6 +568,9 @@ export const useCustomizerStore = create<CustomizerState>()(
       setQRCodeSize: (size) => set({ qrCodeSize: Math.max(3, Math.min(20, size)), hasUnsavedChanges: true }),
       setQRCodeX: (x) => set({ qrCodeX: Math.max(0, Math.min(100, x)), hasUnsavedChanges: true }),
       setQRCodeY: (y) => set({ qrCodeY: Math.max(0, Math.min(100, y)), hasUnsavedChanges: true }),
+      setQRCodeUseCustomColor: (use) => set({ qrCodeUseCustomColor: use, hasUnsavedChanges: true }),
+      setQRCodeColor: (color) => set({ qrCodeColor: color, hasUnsavedChanges: true }),
+      setQRCodeStyle: (style) => set({ qrCodeStyle: style, hasUnsavedChanges: true }),
       setDetectedWords: (words) => set({ detectedWords: words }),
       setShowArtisticText: (show) => set({ showArtisticText: show, hasUnsavedChanges: true }),
       setArtisticTextStyle: (style) => {
@@ -427,7 +587,7 @@ export const useCustomizerStore = create<CustomizerState>()(
           id: `text-${Date.now()}`,
           text: 'New Text',
           x: 50,
-          y: 50,
+          y: 85,
           fontSize: 80,
           fontFamily: state.fontFamily || 'Inter',
           color: state.textColor || '#000000',
@@ -578,13 +738,67 @@ export const useCustomizerStore = create<CustomizerState>()(
         })
       },
       
+      // Border text actions
+      setBorderText: (config) => {
+        const state = get()
+        set({ 
+          borderText: { ...state.borderText, ...config },
+          hasUnsavedChanges: true 
+        })
+      },
+      
+      setBorderTextEnabled: (enabled) => {
+        const state = get()
+        set({ 
+          borderText: { ...state.borderText, enabled },
+          hasUnsavedChanges: true 
+        })
+      },
+      
+      setBorderTextSides: (sides) => {
+        const state = get()
+        set({ 
+          borderText: { ...state.borderText, sides },
+          hasUnsavedChanges: true 
+        })
+      },
+      
+      setBorderTextJustify: (justify) => {
+        const state = get()
+        set({ 
+          borderText: { ...state.borderText, justify },
+          hasUnsavedChanges: true 
+        })
+      },
+      
+      setBorderTextHeight: (height) => {
+        const state = get()
+        set({ 
+          borderText: { ...state.borderText, height: Math.max(2, Math.min(15, height)) },
+          hasUnsavedChanges: true 
+        })
+      },
+      
       setHasHydrated: (hasHydrated) => set({ _hasHydrated: hasHydrated }),
       setHasUnsavedChanges: (hasChanges) => set({ hasUnsavedChanges: hasChanges }),
+      setComputedWaveformData: (data) => set({ computedWaveformData: data }),
       
-      // Undo/Redo implementation
+      // Animation preview setters
+      setIsAnimationPlaying: (playing) => set({ isAnimationPlaying: playing }),
+      setAnimationProgress: (progress) => set({ animationProgress: Math.max(0, Math.min(1, progress)) }),
+      
+      // Undo/Redo implementation with smart duplicate detection
       saveToHistory: () => {
         const state = get()
         const historyState = getHistoryState(state)
+        
+        // Check if this state is different from the last saved state
+        const lastHistoryState = state._history[state._historyIndex]
+        if (lastHistoryState && !areHistoryStatesDifferent(historyState, lastHistoryState)) {
+          // Skip saving duplicate state
+          return
+        }
+        
         const newHistory = state._history.slice(0, state._historyIndex + 1)
         newHistory.push(historyState)
         
@@ -662,7 +876,13 @@ export const useCustomizerStore = create<CustomizerState>()(
     {
       name: 'soundprints-customizer',
       partialize: (state) => ({
-        // Audio data
+        // NOTE: We exclude large data to prevent localStorage quota errors:
+        // - imageMaskImage: Large base64 data URL
+        // - backgroundImage: Large base64 data URL  
+        // - _history: Accumulates state snapshots over time
+        // - computedWaveformData: Large array of amplitude values
+        
+        // Audio URL (Supabase URL is small - just a string, not base64 data)
         audioUrl: state.audioUrl,
         audioFileName: state.audioFileName,
         audioFileSize: state.audioFileSize,
@@ -675,28 +895,34 @@ export const useCustomizerStore = create<CustomizerState>()(
         waveformGradientStops: state.waveformGradientStops,
         waveformGradientDirection: state.waveformGradientDirection,
         
-        // Background colors
+        // Background colors (exclude backgroundImage - too large)
         backgroundColor: state.backgroundColor,
         backgroundUseGradient: state.backgroundUseGradient,
         backgroundGradientStops: state.backgroundGradientStops,
         backgroundGradientDirection: state.backgroundGradientDirection,
-        backgroundImage: state.backgroundImage,
+        // backgroundImage: excluded - large base64 data
         backgroundImagePosition: state.backgroundImagePosition,
         backgroundFocalPoint: state.backgroundFocalPoint,
         
-        // Waveform style
+        // Waveform style and position
         waveformStyle: state.waveformStyle,
         waveformSize: state.waveformSize,
         waveformHeightMultiplier: state.waveformHeightMultiplier,
+        waveformX: state.waveformX,
+        waveformY: state.waveformY,
         barWidth: state.barWidth,
         barGap: state.barGap,
         barRounded: state.barRounded,
         circleRadius: state.circleRadius,
+        circleGapAngle: state.circleGapAngle,
+        mirrorUseTwoColors: state.mirrorUseTwoColors,
+        mirrorSecondaryColor: state.mirrorSecondaryColor,
         canvasAspectRatio: state.canvasAspectRatio,
         
         // Product selection
         selectedProduct: state.selectedProduct,
         selectedSize: state.selectedSize,
+        selectedFrameColor: state.selectedFrameColor,
         
         // Text settings
         customText: state.customText,
@@ -713,6 +939,7 @@ export const useCustomizerStore = create<CustomizerState>()(
         textY: state.textY,
         fontSize: state.fontSize,
         fontFamily: state.fontFamily,
+        textElements: state.textElements,
         
         // QR Code settings
         showQRCode: state.showQRCode,
@@ -721,13 +948,78 @@ export const useCustomizerStore = create<CustomizerState>()(
         qrCodeSize: state.qrCodeSize,
         qrCodeX: state.qrCodeX,
         qrCodeY: state.qrCodeY,
+        qrCodeUseCustomColor: state.qrCodeUseCustomColor,
+        qrCodeColor: state.qrCodeColor,
+        qrCodeStyle: state.qrCodeStyle,
+        
+        // Image mask settings (exclude imageMaskImage - too large)
+        // imageMaskImage: excluded - large base64 data
+        imageMaskShape: state.imageMaskShape,
+        imageMaskFocalPoint: state.imageMaskFocalPoint,
+        
+        // Artistic text
+        detectedWords: state.detectedWords,
+        showArtisticText: state.showArtisticText,
+        artisticTextStyle: state.artisticTextStyle,
+        artisticTextColor: state.artisticTextColor,
+        artisticTextOpacity: state.artisticTextOpacity,
+        
+        // NOTE: Excluded from persistence to prevent quota errors:
+        // - _history: Large array of state snapshots
+        // - _historyIndex: Only meaningful with _history
       }),
       onRehydrateStorage: () => (state) => {
-        state?.setHasHydrated?.(true)
+        if (state) {
+          state.setHasHydrated(true)
+          // Update canUndo/canRedo based on restored history
+          const canUndo = (state._history?.length || 0) > 1 && (state._historyIndex || 0) > 0
+          const canRedo = (state._historyIndex || 0) < (state._history?.length || 0) - 1
+          // This will be handled by the store's state
+        }
       },
     }
   )
 )
+
+// =============================================================================
+// AUTO-SAVE HISTORY ON CHANGES
+// Automatically saves to history after meaningful changes stop for 500ms
+// =============================================================================
+
+let lastHistoryState: Partial<CustomizerState> | null = null
+
+// Subscribe to store changes and auto-save history
+useCustomizerStore.subscribe((state) => {
+  // Skip if we're in the middle of undo/redo
+  const currentHistoryState = getHistoryState(state)
+  
+  // Clear any pending save
+  if (historySaveTimer) {
+    clearTimeout(historySaveTimer)
+  }
+  
+  // Schedule a debounced save
+  historySaveTimer = setTimeout(() => {
+    const store = useCustomizerStore.getState()
+    // Only save if there's a meaningful change from the last saved state
+    const lastSaved = store._history[store._historyIndex]
+    if (!lastSaved || areHistoryStatesDifferent(currentHistoryState, lastSaved)) {
+      store.saveToHistory()
+    }
+  }, HISTORY_SAVE_DELAY)
+})
+
+// Initialize history with current state on first load
+if (typeof window !== 'undefined') {
+  // Wait for hydration to complete
+  const unsubscribe = useCustomizerStore.subscribe((state) => {
+    if (state._hasHydrated && state._history.length === 0) {
+      // Initialize history with current state
+      state.saveToHistory()
+      unsubscribe()
+    }
+  })
+}
 
 // =============================================================================
 // PERFORMANCE OPTIMIZED GROUPED SELECTORS
@@ -747,6 +1039,8 @@ export const useWaveformConfig = () => useCustomizerStore(
     barGap: state.barGap,
     barRounded: state.barRounded,
     circleRadius: state.circleRadius,
+    circleGapAngle: state.circleGapAngle,
+    circleInnerBars: state.circleInnerBars,
     useGradient: state.waveformUseGradient,
     gradientStops: state.waveformGradientStops,
     gradientDirection: state.waveformGradientDirection,
@@ -795,6 +1089,9 @@ export const useQRCodeConfig = () => useCustomizerStore(
     qrCodeSize: state.qrCodeSize,
     qrCodeX: state.qrCodeX,
     qrCodeY: state.qrCodeY,
+    qrCodeUseCustomColor: state.qrCodeUseCustomColor,
+    qrCodeColor: state.qrCodeColor,
+    qrCodeStyle: state.qrCodeStyle,
   }))
 )
 
@@ -845,6 +1142,7 @@ export const useProductMockupConfig = () => useCustomizerStore(
     barGap: state.barGap,
     barRounded: state.barRounded,
     circleRadius: state.circleRadius,
+    circleGapAngle: state.circleGapAngle,
     mirrorUseTwoColors: state.mirrorUseTwoColors,
     mirrorSecondaryColor: state.mirrorSecondaryColor,
     // Background
