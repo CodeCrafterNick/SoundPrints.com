@@ -1683,10 +1683,12 @@ export function FullEditor({
           )}
         </div>
         
-        {/* Interactive Audio Selection Bar - Always visible when audio loaded */}
-        {audioUrl && activeSection !== 'inroom' && (
-          <div className="bg-white border-t border-gray-200 px-4 py-3 flex-shrink-0">
-            <div className="flex items-start gap-3">
+        {/* Bottom Bars - Use CSS visibility to prevent layout shift */}
+        {audioUrl && (
+          <>
+            {/* Interactive Audio Selection Bar - Hidden when In Room active */}
+            <div className={`bg-white border-t border-gray-200 px-4 py-3 flex-shrink-0 h-[82px] ${activeSection === 'inroom' ? 'hidden' : ''}`}>
+              <div className="flex items-start gap-3 h-full">
               {/* Play/Pause Button */}
               <button
                 onClick={togglePlay}
@@ -1904,6 +1906,67 @@ export function FullEditor({
               </button>
             </div>
           </div>
+        
+          {/* In Room Bottom Bar - Visible only when In Room active */}
+          <div className={`bg-white border-t border-gray-200 px-4 py-3 flex-shrink-0 h-[82px] ${activeSection !== 'inroom' ? 'hidden' : ''}`}>
+            <div className="flex items-center gap-3 h-full">
+              {/* Product Info */}
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center flex-shrink-0">
+                  <ProductIcon icon={selectedProduct.icon} className="w-5 h-5 text-gray-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{selectedProduct.shortName}</p>
+                  <p className="text-xs text-gray-500">
+                    {selectedSize.label}
+                    {selectedProduct.category === 'framed' && ` • ${selectedFrameColor.charAt(0).toUpperCase() + selectedFrameColor.slice(1)}`}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Price */}
+              <div className="text-right flex-shrink-0">
+                <p className="text-lg font-bold text-gray-900">${selectedSize.price.toFixed(2)}</p>
+              </div>
+              
+              {/* Add to Cart Button */}
+              <Button
+                onClick={handleAddToCart}
+                disabled={isAddingToCart}
+                className="bg-primary hover:bg-primary/90 text-white px-6 flex-shrink-0"
+              >
+                {isAddingToCart ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart className="w-4 h-4 mr-2" />
+                    Add to Cart
+                  </>
+                )}
+              </Button>
+              
+              {/* Download Button */}
+              <Button
+                onClick={handleAddDigitalDownload}
+                disabled={isAddingDownload}
+                variant="outline"
+                className="border-gray-300 text-gray-700 hover:bg-gray-50 flex-shrink-0"
+              >
+                {isAddingDownload ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    $1
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+          </>
         )}
       </div>
       
