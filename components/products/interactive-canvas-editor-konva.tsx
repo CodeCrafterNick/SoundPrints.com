@@ -4181,9 +4181,9 @@ export const InteractiveCanvasEditorKonva = forwardRef<InteractiveCanvasEditorKo
                   // Handle text repeat and justify
                   let displayText = textContent
                   if (borderText.repeat) {
-                    // Repeat text to fill the width (approximate)
-                    const charsNeeded = Math.ceil(width / charWidth)
-                    const repeatCount = Math.ceil(charsNeeded / textContent.length)
+                    // Repeat text to fill the width using actual text measurement
+                    const singleTextWidth = measureTextWidth(textContent + ' • ')
+                    const repeatCount = Math.ceil(width / singleTextWidth) + 1
                     displayText = (textContent + ' • ').repeat(repeatCount)
                   }
                   
