@@ -13,6 +13,7 @@ export interface WaveformEditorHandle {
   pause: () => void
   togglePlayPause: () => void
   isPlaying: () => boolean
+  getCurrentTime: () => number
 }
 
 export const WaveformEditor = forwardRef<WaveformEditorHandle>(function WaveformEditor(props, ref) {
@@ -48,9 +49,34 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle>(function Waveform
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState<number | null>(null)
   const [isResizing, setIsResizing] = useState(false)
+  const [pendingRegion, setPendingRegion] = useState<{ start: number; end: number } | null>(null)
   const [zoomLevel, setZoomLevel] = useState(1)
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, scrollLeft: 0 })
+  
+  // Ref to track pending region for global mouseup handler
+  const pendingRegionRef = useRef<{ start: number; end: number } | null>(null)
+  pendingRegionRef.current = pendingRegion
+  
+  // Global mouseup listener to sync pending region when drag ends anywhere
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (pendingRegionRef.current) {
+        console.log('WaveformEditor: Global mouseup - syncing region', pendingRegionRef.current)
+        setSelectedRegion(pendingRegionRef.current)
+        setPendingRegion(null)
+        setIsResizing(false)
+      }
+    }
+    
+    window.addEventListener('mouseup', handleGlobalMouseUp)
+    window.addEventListener('touchend', handleGlobalMouseUp)
+    
+    return () => {
+      window.removeEventListener('mouseup', handleGlobalMouseUp)
+      window.removeEventListener('touchend', handleGlobalMouseUp)
+    }
+  }, [setSelectedRegion])
 
   // Expose play/pause methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -79,7 +105,8 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle>(function Waveform
         }
       }
     },
-    isPlaying: () => isPlaying
+    isPlaying: () => isPlaying,
+    getCurrentTime: () => wavesurferRef.current?.getCurrentTime() || 0
   }), [isPlaying])
 
   useEffect(() => {
@@ -119,6 +146,39 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle>(function Waveform
       minPxPerSec: 1,
       interact: false,
       plugins: [regions],
+      // Custom artistic waveform rendering - squiggly line style
+      renderFunction: (peaks: (number[] | Float32Array)[], ctx: CanvasRenderingContext2D) => {
+        const { width, height } = ctx.canvas
+        const channels = peaks[0] as Float32Array | number[]
+        const scale = channels.length / width
+        const step = 6
+
+        ctx.translate(0, height / 2)
+        ctx.strokeStyle = ctx.fillStyle
+        ctx.beginPath()
+
+        for (let i = 0; i < width; i += step * 2) {
+          const index = Math.floor(i * scale)
+          const value = Math.abs(channels[index] || 0)
+          let x = i
+          let y = value * height * 0.8
+
+          ctx.moveTo(x, 0)
+          ctx.lineTo(x, y)
+          ctx.arc(x + step / 2, y, step / 2, Math.PI, 0, true)
+          ctx.lineTo(x + step, 0)
+
+          x = x + step
+          y = -y
+          ctx.moveTo(x, 0)
+          ctx.lineTo(x, y)
+          ctx.arc(x + step / 2, y, step / 2, Math.PI, 0, false)
+          ctx.lineTo(x + step, 0)
+        }
+
+        ctx.stroke()
+        ctx.closePath()
+      },
     })
 
     wavesurferRef.current = wavesurfer
@@ -244,7 +304,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle>(function Waveform
 
     regions.on('region-updated', (region) => {
       if (!isMounted) return
-      console.log('WaveformEditor: Region updated', region.start, region.end)
+      console.log('WaveformEditor: Region updated (dragging)', region.start, region.end)
       setIsResizing(true)
       const duration = wavesurfer.getDuration()
       const newStart = region.start
@@ -252,11 +312,10 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle>(function Waveform
       const newSliderStart = (newStart / duration) * 100
       const newSliderEnd = (newEnd / duration) * 100
       
-      // Only update if values actually changed
-      if (Math.abs(sliderRange[0] - newSliderStart) > 0.1 || Math.abs(sliderRange[1] - newSliderEnd) > 0.1) {
-        setSelectedRegion({ start: newStart, end: newEnd })
-        setSliderRange([newSliderStart, newSliderEnd])
-      }
+      // Store pending values but don't update the store yet - wait for drag end
+      setPendingRegion({ start: newStart, end: newEnd })
+      // Update slider for visual feedback only
+      setSliderRange([newSliderStart, newSliderEnd])
     })
 
     wavesurfer.on('play', () => {
@@ -442,19 +501,20 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle>(function Waveform
     }
   }, [audioUrl])
 
-  // Sync region from store when component mounts or selectedRegion changes
+  // Sync region from store when selectedRegion changes (e.g., from mini selection bar)
   useEffect(() => {
     if (!wavesurferRef.current || !regionsRef.current || !selectedRegion || audioDuration === 0) return
     
     // Check if there's already a region matching the store
     const existingRegions = regionsRef.current.getRegions()
     const hasMatchingRegion = existingRegions.some(r => 
-      Math.abs(r.start - selectedRegion.start) < 0.01 && 
-      Math.abs(r.end - selectedRegion.end) < 0.01
+      Math.abs(r.start - selectedRegion.start) < 0.1 && 
+      Math.abs(r.end - selectedRegion.end) < 0.1
     )
     
-    // Only create region if it doesn't exist and it's not the full duration
-    if (!hasMatchingRegion && (selectedRegion.start > 0.01 || selectedRegion.end < audioDuration - 0.01)) {
+    // Always update if regions don't match store
+    if (!hasMatchingRegion) {
+      // Clear and recreate region to match store
       regionsRef.current.clearRegions()
       regionsRef.current.addRegion({
         start: selectedRegion.start,
@@ -467,9 +527,11 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle>(function Waveform
       // Update slider to match
       const newSliderStart = (selectedRegion.start / audioDuration) * 100
       const newSliderEnd = (selectedRegion.end / audioDuration) * 100
-      setSliderRange([newSliderStart, newSliderEnd])
+      if (Math.abs(sliderRange[0] - newSliderStart) > 0.1 || Math.abs(sliderRange[1] - newSliderEnd) > 0.1) {
+        setSliderRange([newSliderStart, newSliderEnd])
+      }
     }
-  }, [selectedRegion, audioDuration])
+  }, [selectedRegion, audioDuration, sliderRange])
 
   // Handle slider changes
   const handleSliderChange = (value: number[]) => {
@@ -705,6 +767,13 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle>(function Waveform
     setIsDragging(false)
     setDragStart(null)
     setIsResizing(false)
+    
+    // Sync pending region to store on drag end
+    if (pendingRegion) {
+      console.log('WaveformEditor: Syncing region on drag end', pendingRegion.start, pendingRegion.end)
+      setSelectedRegion(pendingRegion)
+      setPendingRegion(null)
+    }
   }
 
   const formatTime = (seconds: number) => {
@@ -735,7 +804,7 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle>(function Waveform
 
   if (!audioUrl) {
     return (
-      <div className="w-full h-32 flex items-center justify-center border rounded-lg bg-muted/20">
+      <div className="w-full h-32 flex items-center justify-center border rounded bg-muted/20">
         <p className="text-muted-foreground text-sm">
           Upload an audio file to see the waveform
         </p>
@@ -754,12 +823,12 @@ export const WaveformEditor = forwardRef<WaveformEditorHandle>(function Waveform
       >
         {/* Background layer that shows the gradient/image */}
         <div 
-          className="absolute inset-0 rounded-lg z-0"
+          className="absolute inset-0 rounded z-0"
           style={getBackgroundStyle()}
         />
         <div 
           ref={waveformRef} 
-          className="w-full rounded-lg border select-none relative z-10" 
+          className="w-full rounded border select-none relative z-10" 
           style={{ 
             height: '100px',
             cursor: isDragging ? 'crosshair' : 'default',
